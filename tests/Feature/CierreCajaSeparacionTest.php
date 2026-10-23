@@ -7,6 +7,7 @@ use App\Models\Plan;
 use App\Models\Producto;
 use App\Models\User;
 use App\Models\Venta;
+use App\Services\VentaService;
 
 beforeEach(function () {
     $this->cierre = CierreCaja::factory()->create();
@@ -21,15 +22,15 @@ function venderEnCierre($test, array $items, float $descuento = 0): Venta
 {
     $subtotal = collect($items)->sum(fn ($i) => $i['producto']->precio_venta * $i['cantidad']);
 
-    $id = $test->actingAs($test->usuario)->postJson(route('ventas.store'), [
+    $test->actingAs($test->usuario);
+
+    return app(VentaService::class)->registrar([
         'es_credito' => false,
         'cliente_id' => Cliente::factory()->create()->id,
         'descuento' => $descuento,
         'items' => collect($items)->map(fn ($i) => ['producto_id' => $i['producto']->id, 'cantidad' => $i['cantidad']])->all(),
         'pagos' => [['metodo_pago_id' => $test->metodo->id, 'monto' => $subtotal - $descuento]],
-    ])->assertCreated()->json('id');
-
-    return Venta::findOrFail($id);
+    ]);
 }
 
 test('el resumen en vivo separa membresías y productos y suman el total', function () {

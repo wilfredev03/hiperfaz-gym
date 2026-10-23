@@ -9,6 +9,7 @@ use App\Models\Producto;
 use App\Models\Suscripcion;
 use App\Models\User;
 use App\Models\Venta;
+use App\Services\VentaService;
 
 beforeEach(function () {
     CierreCaja::factory()->create();
@@ -37,7 +38,9 @@ function venderAnulable($test, array $items, ?Cliente $cliente = null, bool $cre
         $datos['pagos'] = [['metodo_pago_id' => $test->metodo->id, 'monto' => $total]];
     }
 
-    return Venta::findOrFail($test->actingAs($test->admin)->postJson(route('ventas.store'), $datos)->assertCreated()->json('id'));
+    $test->actingAs($test->admin);
+
+    return app(VentaService::class)->registrar($datos);
 }
 
 test('anular devuelve el stock con un movimiento nuevo y deja la venta marcada', function () {

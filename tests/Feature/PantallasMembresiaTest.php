@@ -162,9 +162,6 @@ test('crea un socio con sus datos y va a su ficha', function () {
     $this->actingAs(User::factory()->vendedor()->create())->post(route('socios.store'), [
         'nombre' => 'Ana Torres',
         'documento' => 'V-123',
-        'fecha_nacimiento' => '1995-04-10',
-        'contacto_emergencia_nombre' => 'Rosa Torres',
-        'contacto_emergencia_telefono' => '04141234567',
         'id_acceso' => 'HK-9',
         'activo' => true,
     ])->assertRedirect(route('socios.show', Cliente::firstOrFail()));
@@ -172,13 +169,12 @@ test('crea un socio con sus datos y va a su ficha', function () {
     expect(Cliente::first()->id_acceso)->toBe('HK-9');
 });
 
-test('rechaza una cédula o un id de acceso repetidos y un nacimiento futuro', function () {
+test('rechaza una cédula o un id de acceso repetidos', function () {
     Cliente::factory()->create(['documento' => 'V-1', 'id_acceso' => 'HK-1']);
 
     $this->actingAs(User::factory()->create())->post(route('socios.store'), [
-        'nombre' => 'Otro', 'documento' => 'V-1', 'id_acceso' => 'HK-1',
-        'fecha_nacimiento' => now()->addDay()->toDateString(), 'activo' => true,
-    ])->assertSessionHasErrors(['documento', 'id_acceso', 'fecha_nacimiento']);
+        'nombre' => 'Otro', 'documento' => 'V-1', 'id_acceso' => 'HK-1', 'activo' => true,
+    ])->assertSessionHasErrors(['documento', 'id_acceso']);
 });
 
 test('actualizar un socio conserva su propia cédula sin chocar', function () {
@@ -266,23 +262,14 @@ test('sin búsqueda no se consultan candidatos', function () {
 
 // --- Punto de venta ----------------------------------------------------------------
 
-test('el punto de venta trae la duración de los planes y el socio preseleccionado', function () {
-    $plan = Plan::factory()->duracion(7)->create();
+test('el punto de venta no ofrece los planes de membresía', function () {
+    $plan = Plan::factory()->create();
     $producto = Producto::factory()->create();
-    $socio = Cliente::factory()->create();
 
-    $this->actingAs(User::factory()->create())->get(route('ventas.create', ['cliente' => $socio->id]))
+    $this->actingAs(User::factory()->create())->get(route('ventas.create'))
         ->assertInertia(fn ($page) => $page
-            ->where('clienteInicial', $socio->id)
-            ->where('productos', fn ($productos) => collect($productos)->firstWhere('id', $plan->producto_id)['plan']['duracion_dias'] === 7
-                && collect($productos)->firstWhere('id', $producto->id)['plan'] === null));
-});
-
-test('un socio inactivo no se preselecciona en el punto de venta', function () {
-    $socio = Cliente::factory()->inactivo()->create();
-
-    $this->actingAs(User::factory()->create())->get(route('ventas.create', ['cliente' => $socio->id]))
-        ->assertInertia(fn ($page) => $page->where('clienteInicial', null));
+            ->missing('clienteInicial')
+            ->where('productos', fn ($productos) => collect($productos)->pluck('id')->all() === [$producto->id]));
 });
 
 // --- Vigencia --------------------------------------------------------------------
@@ -312,9 +299,15 @@ test('el catálogo de productos y las compras no incluyen los planes de membres�
     $this->actingAs($admin)->get(route('ordenes_compra.create'))
         ->assertInertia(fn ($page) => $page
             ->where('productos', fn ($productos) => collect($productos)->pluck('id')->all() === [$producto->id]));
+});
 
-    // pero siguen disponibles en el punto de venta
-    $this->actingAs($admin)->get(route('ventas.create'))
-        ->assertInertia(fn ($page) => $page
-            ->where('productos', fn ($productos) => collect($productos)->pluck('id')->contains($plan->producto_id)));
+test('el reporte de membresías vendidas trae todas las filas del período', function () {
+    $this->actingAs(User::factory()->create());
+
+    $this->getJson(route('membresias_vendidas.reporte', ['periodo' => 'hoy']))
+        ->assertOk()
+        ->assertJsonStructure(['desde', 'hasta', 'resumen' => ['cantidad', 'altas', 'renovaciones', 'total_usd', 'total_bs'], 'por_plan', 'filas']);
+
+    $this->getJson(route('membresias_vendidas.reporte', ['periodo' => 'personalizado']))
+        ->assertUnprocessable();
 });

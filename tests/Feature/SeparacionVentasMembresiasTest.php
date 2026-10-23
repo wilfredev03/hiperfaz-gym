@@ -6,6 +6,8 @@ use App\Models\MetodoPago;
 use App\Models\Plan;
 use App\Models\Producto;
 use App\Models\User;
+use App\Models\Venta;
+use App\Services\VentaService;
 
 beforeEach(function () {
     CierreCaja::factory()->create();
@@ -16,16 +18,20 @@ beforeEach(function () {
     $this->batido = Producto::factory()->sinControlDeInventario()->create(['precio_venta' => 5]);
 });
 
-function venderLineas($test, array $items, ?Cliente $cliente = null, ?float $monto = null)
+// las membresías ya no se venden por el punto de venta, pero una venta mixta
+// puede existir (datos anteriores): se registra con el mismo servicio
+function venderLineas($test, array $items, ?Cliente $cliente = null, ?float $monto = null): Venta
 {
     $total = collect($items)->sum(fn ($i) => $i['precio'] * $i['cantidad']);
 
-    return $test->actingAs($test->usuario)->postJson(route('ventas.store'), [
+    $test->actingAs($test->usuario);
+
+    return app(VentaService::class)->registrar([
         'es_credito' => false,
         'cliente_id' => $cliente?->id,
         'items' => collect($items)->map(fn ($i) => ['producto_id' => $i['producto']->id, 'cantidad' => $i['cantidad']])->all(),
         'pagos' => [['metodo_pago_id' => $test->metodo->id, 'monto' => $monto ?? $total]],
-    ])->assertCreated();
+    ]);
 }
 
 test('ventas del día no incluye una venta que solo lleva membresías', function () {
