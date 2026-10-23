@@ -82,7 +82,7 @@ Marca bajo la que se vende este producto: **Hiperfaz Gym**.
 7. **Cierre de caja.** Sin fondo inicial, sin notas, sin apertura manual ni
    conteo físico. `cierres_caja` se abre solo (`estado = abierto`) con la
    primera venta del día (`CierreCaja::abrirAutomaticaDeHoy`, invocado desde
-   `VentaController@store`) — nunca hay un botón de "abrir caja". Cerrar
+   `App\Services\VentaService::registrar`) — nunca hay un botón de "abrir caja". Cerrar
    caja no pide ningún monto digitado: el controlador calcula
    `total_ventas` (suma de `ventas.total` del día) y el desglose por método
    de pago desde `venta_pagos`, lo guarda en `cierre_caja_metodos` (una fila
@@ -115,11 +115,15 @@ Marca bajo la que se vende este producto: **Hiperfaz Gym**.
    cuando se agregue multi-sucursal real, ese es el único punto a tocar.
 10. **La suscripción no se edita.** Una membresía vendida genera una fila en
     `suscripciones`, creada dentro de la misma transacción de la venta
-    (`VentaController@store`) y ligada al `venta_detalle` que la originó.
+    (`VentaService::registrar`) y ligada al `venta_detalle` que la originó.
     Renovar = fila **nueva** (nunca se extiende ni se modifica la anterior);
     el historial de renovaciones es simplemente la lista de filas del socio.
     Los cambios de estado (`activa | vencida | congelada | cancelada`) son
     el único campo mutable permitido y nunca alteran fechas ya pactadas.
+    Única excepción: corregir un error de digitación con
+    `Suscripcion::corregirFechas()` (cualquier usuario autenticado; motivo
+    obligatorio; deja una fila en `suscripcion_correcciones`, bitácora de solo
+    inserción con las fechas anteriores y nuevas; no toca venta ni pagos).
     Si la venta se anula, la suscripción pasa a `cancelada`.
 11. **El acceso físico está desacoplado.** `asistencias` es una tabla de
     eventos **append-only** (`cliente_id` nullable, `fecha_hora`,
@@ -192,9 +196,9 @@ clientes y tasas de cambio están abiertos a cualquier usuario autenticado.
    `ProductoController`, `productos/Index.vue`, `ventas/Create.vue`,
    `CategoriaFactory` y `ProductoFactory`.
 2. ~~Modelo de socios y membresías~~ (hecho, ver abajo).
-3. Pantallas: alta de plan (hoy `planes` solo se siembra), vender/renovar
-   membresía desde el punto de venta, estado de vigencia del socio, registro
-   manual de asistencia desde recepción, listado de vencimientos.
+3. ~~Pantallas~~ (hecho): alta de plan en Configuración > Membresías, activar o
+   renovar la membresía desde Clientes (ver abajo), vigencia del cliente,
+   registro manual de asistencia y listado de vencimientos.
 4. ~~Anular ventas~~ (hecho): `POST ventas/{venta}/anular` (solo admin, motivo
    obligatorio) vía `App\Services\AnulacionVentaService`: devuelve el stock con
    movimientos `devolucion`, cancela la suscripción, descuenta la deuda a
@@ -212,8 +216,13 @@ La barra lateral va en grupos: **Gimnasio** (Clientes, Asistencia, Por vencer,
 Membresías vendidas), **Ventas** (Nueva venta, Ventas del día, Catálogo, Compras),
 **Finanzas** (Cuentas por cobrar, Cierre de caja) y **Sistema** (Tasas de cambio, Configuración).
 Las membresías se administran en Configuración > Membresías y no aparecen en
-el catálogo de productos ni en Compras (`Producto::sinPlan()`); se cobran en
-el punto de venta. "Ventas del día" cuenta solo productos (en una venta mixta
+el catálogo de productos, en Compras ni en el punto de venta (`Producto::sinPlan()`;
+`VentaController@store` rechaza un plan): se activan desde **Clientes**. Al
+registrar un cliente (página propia `socios.create`, con resumen lateral) el formulario ofrece elegir el plan (cards) y cómo paga
+(cards de método de pago o "dejar a crédito"), todo en una transacción; la
+ficha del cliente tiene el mismo diálogo ("Activar/Renovar membresía",
+`POST socios/{socio}/membresia`). Pagan el plan completo con un solo método (o
+queda a crédito y se abona en Cuentas por cobrar). "Ventas del día" cuenta solo productos (en una venta mixta
 prorratea total y pagos a la parte de productos); "Membresías vendidas" cuenta
 solo suscripciones y distingue alta (primera suscripción del socio) de
 renovación. El cierre de caja sigue siendo el total del dinero que entró, y lo
@@ -223,15 +232,15 @@ el descuento de cada venta se reparte a prorrata entre sus líneas; `NULL` en
 los cierres anteriores a la separación, que no muestran el desglose).
 "Por vencer" (`VencimientoController`, `vencimientos.index`) lista a los
 socios activos que vencen en los próximos 7 días y a los que vencieron en los
-últimos 30 sin renovar, con botón "Renovar" hacia el punto de venta.
+últimos 30 sin renovar, con botón "Renovar" hacia la ficha del cliente (`?renovar=1` abre el diálogo).
 
 ### Modelo de membresías (construido)
 
 - `clientes` = las personas con membresía. En la interfaz se les llama
   **clientes** (nunca "socios"); los nombres internos de rutas, controladores y
   archivos (`socios.*`, `SocioController`, `pages/socios/`) quedaron con el
-  nombre original para no romper nada. Se agregaron `fecha_nacimiento`, `foto` (reservada: hoy no se toma foto a los clientes y no hay subida ni pantalla que la use),
-  `contacto_emergencia_nombre/telefono` e `id_acceso` (único, nullable, para
+  nombre original para no romper nada. Se agregaron `foto` (reservada: hoy no se toma foto a los clientes y no hay subida ni pantalla que la use)
+  e `id_acceso` (único, nullable, para
   enlazar con el terminal en la fase 2). La cédula es `documento`.
 - `planes`: `producto_id` (único) + `duracion_dias` (`CHECK > 0`). Un producto
   con fila en `planes` es una membresía; `Producto::plan()`.
@@ -239,10 +248,19 @@ socios activos que vencen en los próximos 7 días y a los que vencieron en los
   `fecha_inicio`, `fecha_vencimiento` (último día con acceso, inclusive),
   `estado` con `CHECK`. El modelo lanza excepción si se intenta modificar
   cualquier cosa que no sea `estado`.
+- **Membresía personalizada** (duración y precio libres: "9 días", "del X al
+  Y"): `planes.personalizado` marca una única fila, `Plan::personalizado()`,
+  que se crea la primera vez que se usa y no aparece como plan del catálogo.
+  `MembresiaService` la cobra con precio propio en la línea (`precio_unitario`
+  que solo el servidor puede enviar) y fechas explícitas (`suscripcion.inicio/fin`)
+  o por días (empieza hoy o al vencer la vigente). El precio debe ser mayor a 0.
 - `asistencias`: append-only (sin `updated_at`; el modelo bloquea update y
   delete), `CHECK` en `resultado` y `origen (manual | terminal)`.
-- `VentaController@store` llama a `App\Services\SuscripcionService::emitir`
-  dentro de la transacción: exige cliente y cantidad entera si hay un plan;
+- `App\Services\VentaService::registrar` (tasa de hoy, cierre abierto, detalle,
+  inventario, pagos, saldo del cliente) lo usan el punto de venta (productos) y
+  `App\Services\MembresiaService::activar` (plan de un cliente). Llama a
+  `SuscripcionService::emitir` dentro de la transacción: exige cliente y cantidad
+  entera si hay un plan;
   comprar N unidades crea **una** suscripción de N × `duracion_dias`; si el
   socio ya tiene una vigente, la nueva empieza el día siguiente a su vencimiento.
 
