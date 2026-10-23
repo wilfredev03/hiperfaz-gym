@@ -1,11 +1,22 @@
 <script setup lang="ts">
 import { Head, Link, router } from '@inertiajs/vue3';
-import { CalendarCheck } from '@lucide/vue';
-import { ref } from 'vue';
+import {
+    CalendarDate,
+    getLocalTimeZone,
+    type DateValue,
+} from '@internationalized/date';
+import { CalendarCheck, Calendar as CalendarIcon } from '@lucide/vue';
+import { computed, ref, shallowRef, watch } from 'vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import ReporteMembresias from '@/components/membresias/ReporteMembresias.vue';
 import { Card, CardContent } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
+import {
+    Popover,
+    PopoverContent,
+    PopoverTrigger,
+} from '@/components/ui/popover';
+import { RangeCalendar } from '@/components/ui/range-calendar';
 import { fmtDia } from '@/lib/socios';
 import { fmtBs, fmtUsd } from '@/lib/ventas';
 import { index } from '@/routes/membresias_vendidas';
@@ -58,8 +69,45 @@ const SEGMENTOS: { value: Periodo; label: string }[] = [
     { value: 'mes', label: 'Este mes' },
 ];
 
-const desde = ref(props.filtros.desde);
-const hasta = ref(props.filtros.hasta);
+// el backend habla en strings "YYYY-MM-DD"; el RangeCalendar, en DateValue
+function stringAFecha(fecha: string): CalendarDate {
+    const [year, month, day] = fecha.split('-').map(Number);
+
+    return new CalendarDate(year, month, day);
+}
+
+function fechaCorta(valor: DateValue): string {
+    return valor.toDate(getLocalTimeZone()).toLocaleDateString('es-VE', {
+        day: 'numeric',
+        month: 'short',
+    });
+}
+
+// shallowRef: CalendarDate trae campos privados que la reactividad profunda desarma
+const rango = shallowRef<{
+    start: DateValue | undefined;
+    end: DateValue | undefined;
+}>({
+    start: stringAFecha(props.filtros.desde),
+    end: stringAFecha(props.filtros.hasta),
+});
+const popoverRangoAbierto = ref(false);
+
+const etiquetaRango = computed(() =>
+    rango.value.start && rango.value.end
+        ? `${fechaCorta(rango.value.start)} – ${fechaCorta(rango.value.end)}`
+        : 'Rango personalizado',
+);
+
+watch(
+    () => props.filtros,
+    (filtros) => {
+        rango.value = {
+            start: stringAFecha(filtros.desde),
+            end: stringAFecha(filtros.hasta),
+        };
+    },
+);
 
 function irA(periodo: Periodo, extra: Record<string, string> = {}) {
     router.get(
@@ -70,9 +118,15 @@ function irA(periodo: Periodo, extra: Record<string, string> = {}) {
 }
 
 function aplicarRango() {
-    if (desde.value && hasta.value) {
-        irA('personalizado', { desde: desde.value, hasta: hasta.value });
+    if (!rango.value.start || !rango.value.end) {
+        return;
     }
+
+    popoverRangoAbierto.value = false;
+    irA('personalizado', {
+        desde: rango.value.start.toString(),
+        hasta: rango.value.end.toString(),
+    });
 }
 
 const ESTADO_VENTA: Record<MembresiaFila['estado_venta'], string> = {
@@ -90,41 +144,61 @@ const ESTADO_VENTA: Record<MembresiaFila['estado_venta'], string> = {
         <div class="flex flex-wrap items-center justify-between gap-3">
             <h1 class="text-xl font-semibold">Membresías vendidas</h1>
 
-            <div
-                class="inline-flex items-center gap-1 rounded-full bg-neutral-500/10 p-1"
-            >
-                <button
-                    v-for="segmento in SEGMENTOS"
-                    :key="segmento.value"
-                    type="button"
-                    class="rounded-full px-3.5 py-1.5 text-sm font-medium transition-all"
-                    :class="
-                        filtros.periodo === segmento.value
-                            ? 'bg-primary text-primary-foreground shadow-sm'
-                            : 'text-muted-foreground hover:text-foreground'
-                    "
-                    @click="irA(segmento.value)"
-                >
-                    {{ segmento.label }}
-                </button>
-            </div>
-        </div>
+            <div class="flex flex-wrap items-center gap-2">
+                <ReporteMembresias :filtros="filtros" />
 
-        <div class="flex flex-wrap items-center gap-2 text-sm">
-            <span class="text-muted-foreground">Rango:</span>
-            <Input v-model="desde" type="date" class="w-40" />
-            <span class="text-muted-foreground">a</span>
-            <Input v-model="hasta" type="date" class="w-40" />
-            <Button
-                size="sm"
-                :variant="
-                    filtros.periodo === 'personalizado' ? 'default' : 'outline'
-                "
-                :disabled="!desde || !hasta"
-                @click="aplicarRango"
-            >
-                Aplicar
-            </Button>
+                <div
+                    class="inline-flex items-center gap-1 rounded-full bg-neutral-500/10 p-1"
+                >
+                    <button
+                        v-for="segmento in SEGMENTOS"
+                        :key="segmento.value"
+                        type="button"
+                        class="rounded-full px-3.5 py-1.5 text-sm font-medium transition-all"
+                        :class="
+                            filtros.periodo === segmento.value
+                                ? 'bg-primary text-primary-foreground shadow-sm'
+                                : 'text-muted-foreground hover:text-foreground'
+                        "
+                        @click="irA(segmento.value)"
+                    >
+                        {{ segmento.label }}
+                    </button>
+
+                    <Popover v-model:open="popoverRangoAbierto">
+                        <PopoverTrigger as-child>
+                            <button
+                                type="button"
+                                class="inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-sm font-medium transition-all"
+                                :class="
+                                    filtros.periodo === 'personalizado'
+                                        ? 'bg-primary text-primary-foreground shadow-sm'
+                                        : 'text-muted-foreground hover:text-foreground'
+                                "
+                            >
+                                <CalendarIcon class="size-3.5" />
+                                {{ etiquetaRango }}
+                            </button>
+                        </PopoverTrigger>
+                        <PopoverContent class="w-auto p-0" align="end">
+                            <RangeCalendar
+                                v-model="rango"
+                                :number-of-months="2"
+                            />
+                            <div class="flex justify-end border-t p-3">
+                                <Button
+                                    type="button"
+                                    size="sm"
+                                    :disabled="!rango.start || !rango.end"
+                                    @click="aplicarRango"
+                                >
+                                    Aplicar
+                                </Button>
+                            </div>
+                        </PopoverContent>
+                    </Popover>
+                </div>
+            </div>
         </div>
 
         <div class="grid gap-3 sm:grid-cols-3">
