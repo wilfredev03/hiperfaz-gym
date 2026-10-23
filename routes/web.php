@@ -13,6 +13,7 @@ use App\Http\Controllers\ProveedorController;
 use App\Http\Controllers\ReporteController;
 use App\Http\Controllers\SocioController;
 use App\Http\Controllers\SucursalController;
+use App\Http\Controllers\SuscripcionController;
 use App\Http\Controllers\TasaCambioController;
 use App\Http\Controllers\UnidadMedidaController;
 use App\Http\Controllers\UsuarioController;
@@ -39,11 +40,14 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::resource('clientes', ClienteController::class)->except(['create', 'show', 'edit']);
 
     // socios (clientes con membresía) y recepción: abiertos a cualquier usuario
+    Route::post('socios/{socio}/membresia', [SocioController::class, 'membresia'])->name('socios.membresia');
+    Route::put('suscripciones/{suscripcion}/fechas', [SuscripcionController::class, 'corregir'])->name('suscripciones.corregir');
     Route::resource('socios', SocioController::class)
         ->parameters(['socios' => 'socio'])
-        ->except(['create', 'edit', 'destroy']);
+        ->except(['edit', 'destroy']);
     Route::get('vencimientos', [VencimientoController::class, 'index'])->name('vencimientos.index');
     Route::get('membresias_vendidas', [MembresiaVendidaController::class, 'index'])->name('membresias_vendidas.index');
+    Route::get('membresias_vendidas/reporte', [MembresiaVendidaController::class, 'reporte'])->name('membresias_vendidas.reporte');
     Route::get('asistencias', [AsistenciaController::class, 'index'])->name('asistencias.index');
     Route::post('asistencias', [AsistenciaController::class, 'store'])->name('asistencias.store');
 

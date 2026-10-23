@@ -9,13 +9,10 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('clientes', function (Blueprint $table) {
-            $table->date('fecha_nacimiento')->nullable()->after('direccion');
-            $table->string('foto')->nullable()->after('fecha_nacimiento');
-            $table->string('contacto_emergencia_nombre')->nullable()->after('foto');
-            $table->string('contacto_emergencia_telefono')->nullable()->after('contacto_emergencia_nombre');
+            $table->string('foto')->nullable()->after('direccion');
             // identificador del socio en el terminal de acceso (fase 2); nullable
             // porque hoy no hay integración
-            $table->string('id_acceso')->nullable()->unique()->after('contacto_emergencia_telefono');
+            $table->string('id_acceso')->nullable()->unique()->after('foto');
         });
     }
 
@@ -23,10 +20,7 @@ return new class extends Migration
     {
         Schema::table('clientes', function (Blueprint $table) {
             $table->dropUnique(['id_acceso']);
-            $table->dropColumn([
-                'fecha_nacimiento', 'foto', 'contacto_emergencia_nombre',
-                'contacto_emergencia_telefono', 'id_acceso',
-            ]);
+            $table->dropColumn(['foto', 'id_acceso']);
         });
     }
 };

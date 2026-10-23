@@ -17,6 +17,7 @@ class PlanController extends Controller
     public function index(): Response
     {
         $planes = Plan::query()
+            ->where('personalizado', false)
             ->with('producto:id,nombre,precio_venta,activo')
             ->withCount('suscripciones')
             ->orderBy('duracion_dias')
@@ -86,14 +87,8 @@ class PlanController extends Controller
         return to_route('planes.index');
     }
 
-    /**
-     * Los planes nuevos van en la misma categoría que los existentes; si es el
-     * primero, se crea una por defecto que el admin puede renombrar.
-     */
     private function categoriaDePlanes(): Categoria
     {
-        $existente = Plan::query()->latest('id')->first()?->producto?->categoria;
-
-        return $existente ?? Categoria::firstOrCreate(['nombre' => 'Membresías']);
+        return Plan::categoriaDePlanes();
     }
 }

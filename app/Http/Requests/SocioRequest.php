@@ -2,12 +2,15 @@
 
 namespace App\Http\Requests;
 
+use App\Http\Requests\Concerns\ReglasMembresia;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
 class SocioRequest extends FormRequest
 {
+    use ReglasMembresia;
+
     public function authorize(): bool
     {
         return true;
@@ -26,11 +29,12 @@ class SocioRequest extends FormRequest
             'telefono' => ['nullable', 'string', 'max:255'],
             'email' => ['nullable', 'email', 'max:255'],
             'direccion' => ['nullable', 'string'],
-            'fecha_nacimiento' => ['nullable', 'date', 'before_or_equal:today'],
-            'contacto_emergencia_nombre' => ['nullable', 'string', 'max:255'],
-            'contacto_emergencia_telefono' => ['nullable', 'string', 'max:255'],
             'id_acceso' => ['nullable', 'string', 'max:255', Rule::unique('clientes', 'id_acceso')->ignore($socio)],
             'activo' => ['required', 'boolean'],
+
+            // al registrar un cliente se puede activar su membresía de una vez
+            'membresia' => ['nullable', 'array'],
+            ...($this->isMethod('POST') ? $this->reglasMembresia('membresia.', false) : []),
         ];
     }
 }

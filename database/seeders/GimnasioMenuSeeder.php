@@ -28,9 +28,9 @@ class GimnasioMenuSeeder extends Seeder
 
         // planes de membresía: producto sin inventario + su duración en días
         $planes = [
-            ['Pase de Día', 3.00, 1],
-            ['Plan Semanal', 10.00, 7],
-            ['Plan Mensual', 25.00, 30],
+            ['Diario', 3.00, 1],
+            ['Semanal', 10.00, 7],
+            ['Mensual', 25.00, 30],
         ];
 
         foreach ($planes as [$nombre, $precio, $dias]) {

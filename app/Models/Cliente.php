@@ -14,13 +14,10 @@ class Cliente extends Model
 
     protected $fillable = [
         'nombre', 'documento', 'telefono', 'email', 'direccion',
-        'saldo_pendiente', 'activo',
-        'fecha_nacimiento', 'foto', 'contacto_emergencia_nombre',
-        'contacto_emergencia_telefono', 'id_acceso',
+        'saldo_pendiente', 'activo', 'foto', 'id_acceso',
     ];
 
     protected $casts = [
-        'fecha_nacimiento' => 'date',
         'saldo_pendiente' => 'decimal:4',
         'activo' => 'boolean',
     ];

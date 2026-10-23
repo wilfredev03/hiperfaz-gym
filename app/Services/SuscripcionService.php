@@ -28,19 +28,35 @@ class SuscripcionService
      * hoy. Por cada unidad vendida se suma una vez `duracion_dias`, y
      * `fecha_vencimiento` es el último día con acceso (inclusive).
      */
-    public function emitir(VentaDetalle $detalle, Plan $plan, Cliente $cliente): Suscripcion
+    public function emitir(VentaDetalle $detalle, Plan $plan, Cliente $cliente, ?array $fechas = null): Suscripcion
     {
-        $inicio = $this->fechaDeInicio($cliente);
-        $dias = $plan->duracion_dias * (int) $detalle->cantidad;
+        if ($fechas) {
+            // membresía personalizada con fechas elegidas: tal cual se pidieron
+            $inicio = CarbonImmutable::parse($fechas['inicio']);
+            $fin = CarbonImmutable::parse($fechas['fin']);
+        } else {
+            $inicio = $this->fechaDeInicio($cliente);
+            $fin = $inicio->addDays($plan->duracion_dias * (int) $detalle->cantidad - 1);
+        }
 
         return Suscripcion::create([
             'cliente_id' => $cliente->id,
             'plan_id' => $plan->id,
             'venta_detalle_id' => $detalle->id,
             'fecha_inicio' => $inicio->toDateString(),
-            'fecha_vencimiento' => $inicio->addDays($dias - 1)->toDateString(),
-            'estado' => 'activa',
+            'fecha_vencimiento' => $fin->toDateString(),
+            // una membresía cargada con fechas ya pasadas nace vencida
+            'estado' => $fin->isBefore(CarbonImmutable::today()) ? 'vencida' : 'activa',
         ]);
+    }
+
+    /**
+     * Primer día de una membresía nueva: hoy, o el día siguiente al
+     * vencimiento de la que el cliente tiene vigente.
+     */
+    public function inicioPara(Cliente $cliente): CarbonImmutable
+    {
+        return $this->fechaDeInicio($cliente);
     }
 
     /**
