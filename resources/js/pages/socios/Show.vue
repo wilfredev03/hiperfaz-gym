@@ -1,9 +1,13 @@
 <script setup lang="ts">
-import { Head, Link, router, useForm } from '@inertiajs/vue3';
-import { ArrowLeft, DoorOpen, Pencil, ShoppingCart } from '@lucide/vue';
-import { ref } from 'vue';
-import { store as registrarEntrada } from '@/actions/App/Http/Controllers/AsistenciaController';
-import { update as actualizarSocio } from '@/actions/App/Http/Controllers/SocioController';
+import { Head, Link, useForm } from '@inertiajs/vue3';
+import { ArrowLeft, Pencil, ShoppingCart } from '@lucide/vue';
+import { computed, onMounted, ref } from 'vue';
+import {
+    membresia as activarMembresia,
+    update as actualizarSocio,
+} from '@/actions/App/Http/Controllers/SocioController';
+import { corregir as corregirFechas } from '@/actions/App/Http/Controllers/SuscripcionController';
+import MembresiaFields from '@/components/socios/MembresiaFields.vue';
 import SocioFormFields from '@/components/socios/SocioFormFields.vue';
 import VigenciaBadge from '@/components/socios/VigenciaBadge.vue';
 import { Badge } from '@/components/ui/badge';
@@ -15,16 +19,28 @@ import {
     DialogHeader,
     DialogTitle,
 } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import InputError from '@/components/InputError.vue';
+import type { MetodoPagoOpcion, TasaVigente } from '@/lib/clientes';
 import {
+    CAMPOS_ERROR_MEMBRESIA,
+    cobroEnEfectivo,
     ESTADO_SUSCRIPCION_ETIQUETAS,
     fmtDia,
+    hayMembresia,
+    membresiaVacia,
     textoRestante,
 } from '@/lib/socios';
-import type { EstadoSuscripcion, Vigencia } from '@/lib/socios';
+import type {
+    CampoErrorMembresia,
+    EstadoSuscripcion,
+    PlanOpcion,
+    Vigencia,
+} from '@/lib/socios';
 import { fmtHora, fmtUsd } from '@/lib/ventas';
 import { index as clientesIndex } from '@/routes/clientes';
 import { index } from '@/routes/socios';
-import { create as crearVenta } from '@/routes/ventas';
 
 interface Socio {
     id: number;
@@ -33,9 +49,6 @@ interface Socio {
     telefono: string | null;
     email: string | null;
     direccion: string | null;
-    fecha_nacimiento: string | null;
-    contacto_emergencia_nombre: string | null;
-    contacto_emergencia_telefono: string | null;
     id_acceso: string | null;
     saldo_pendiente: string;
     activo: boolean;
@@ -55,6 +68,16 @@ const props = defineProps<{
         fecha_vencimiento: string;
         estado: EstadoSuscripcion;
         numero_venta: string;
+        corregida: boolean;
+    }[];
+    correcciones: {
+        id: number;
+        plan: string;
+        usuario: string;
+        motivo: string;
+        anterior: [string, string];
+        nueva: [string, string];
+        fecha: string;
     }[];
     asistencias: {
         id: number;
@@ -62,6 +85,9 @@ const props = defineProps<{
         resultado: 'permitido' | 'denegado';
         origen: 'manual' | 'terminal';
     }[];
+    planes: PlanOpcion[];
+    metodosPago: MetodoPagoOpcion[];
+    tasaCambio: TasaVigente | null;
 }>();
 
 defineOptions({
@@ -69,12 +95,6 @@ defineOptions({
         breadcrumbs: [{ title: 'Clientes', href: index() }],
     },
 });
-
-const entrada = useForm({ cliente_id: props.socio.id });
-
-function registrar() {
-    entrada.post(registrarEntrada.url(), { preserveScroll: true });
-}
 
 function fmtFechaHora(valor: string): string {
     const fecha = new Date(valor);
@@ -92,9 +112,6 @@ const form = useForm({
     telefono: '',
     email: '',
     direccion: '',
-    fecha_nacimiento: '',
-    contacto_emergencia_nombre: '',
-    contacto_emergencia_telefono: '',
     id_acceso: '',
     activo: true,
 });
@@ -106,11 +123,6 @@ function abrirEditar() {
     form.telefono = props.socio.telefono ?? '';
     form.email = props.socio.email ?? '';
     form.direccion = props.socio.direccion ?? '';
-    form.fecha_nacimiento = props.socio.fecha_nacimiento?.slice(0, 10) ?? '';
-    form.contacto_emergencia_nombre =
-        props.socio.contacto_emergencia_nombre ?? '';
-    form.contacto_emergencia_telefono =
-        props.socio.contacto_emergencia_telefono ?? '';
     form.id_acceso = props.socio.id_acceso ?? '';
     form.activo = props.socio.activo;
     dialogAbierto.value = true;
@@ -125,38 +137,108 @@ function guardar() {
     });
 }
 
-function irAVender() {
-    router.get(crearVenta.url({ query: { cliente: props.socio.id } }));
+// --- Activar / renovar la membresía -------------------------------------------
+
+const membresiaAbierta = ref(false);
+
+const formMembresia = useForm(membresiaVacia());
+
+const erroresMembresia = computed(() => {
+    const errores = formMembresia.errors as Record<string, string>;
+
+    return Object.fromEntries(
+        CAMPOS_ERROR_MEMBRESIA.map((campo: CampoErrorMembresia) => [
+            campo,
+            errores[campo],
+        ]),
+    );
+});
+
+// en efectivo/divisas no se cobra si lo recibido no cubre el total
+const recibidoInsuficiente = computed(
+    () =>
+        (cobroEnEfectivo(
+            formMembresia,
+            props.planes,
+            props.metodosPago,
+            props.tasaCambio,
+        )?.falta ?? 0) > 0,
+);
+
+// --- Corregir las fechas de una membresía ---------------------------------------
+
+const correccionAbierta = ref(false);
+const suscripcionEnCorreccion = ref<(typeof props.suscripciones)[number] | null>(
+    null,
+);
+
+const formCorreccion = useForm({
+    fecha_inicio: '',
+    fecha_vencimiento: '',
+    motivo: '',
+});
+
+function abrirCorreccion(suscripcion: (typeof props.suscripciones)[number]) {
+    suscripcionEnCorreccion.value = suscripcion;
+    formCorreccion.reset();
+    formCorreccion.clearErrors();
+    formCorreccion.fecha_inicio = suscripcion.fecha_inicio.slice(0, 10);
+    formCorreccion.fecha_vencimiento = suscripcion.fecha_vencimiento.slice(0, 10);
+    correccionAbierta.value = true;
 }
+
+function guardarCorreccion() {
+    if (!suscripcionEnCorreccion.value) {
+        return;
+    }
+
+    formCorreccion.put(corregirFechas.url(suscripcionEnCorreccion.value.id), {
+        preserveScroll: true,
+        onSuccess: () => {
+            correccionAbierta.value = false;
+        },
+    });
+}
+
+function abrirMembresia() {
+    formMembresia.reset();
+    formMembresia.clearErrors();
+    membresiaAbierta.value = true;
+}
+
+function cobrarMembresia() {
+    formMembresia.post(activarMembresia.url(props.socio.id), {
+        preserveScroll: true,
+        onSuccess: () => {
+            membresiaAbierta.value = false;
+        },
+    });
+}
+
+// "Renovar" en Por vencer llega aquí con ?renovar=1 y deja el diálogo abierto
+onMounted(() => {
+    if (new URLSearchParams(window.location.search).has('renovar')) {
+        abrirMembresia();
+    }
+});
+
+const textoVigente = computed(() =>
+    props.membresia.vigencia === 'sin_membresia'
+        ? 'Activar membresía'
+        : 'Renovar membresía',
+);
 
 const DATOS: { etiqueta: string; valor: () => string | null }[] = [
     { etiqueta: 'Cédula', valor: () => props.socio.documento },
     { etiqueta: 'Teléfono', valor: () => props.socio.telefono },
     { etiqueta: 'Correo', valor: () => props.socio.email },
-    {
-        etiqueta: 'Nacimiento',
-        valor: () =>
-            props.socio.fecha_nacimiento
-                ? fmtDia(props.socio.fecha_nacimiento)
-                : null,
-    },
     { etiqueta: 'Dirección', valor: () => props.socio.direccion },
-    {
-        etiqueta: 'Emergencia',
-        valor: () =>
-            [
-                props.socio.contacto_emergencia_nombre,
-                props.socio.contacto_emergencia_telefono,
-            ]
-                .filter(Boolean)
-                .join(' · ') || null,
-    },
     { etiqueta: 'ID de acceso', valor: () => props.socio.id_acceso },
 ];
 </script>
 
 <template>
-    <Head :title="socio.nombre" />
+    <Head :title="`Detalles del cliente: ${socio.nombre}`" />
 
     <div class="flex flex-1 flex-col gap-4 p-4 sm:p-6">
         <Link
@@ -164,13 +246,15 @@ const DATOS: { etiqueta: string; valor: () => string | null }[] = [
             class="text-muted-foreground hover:text-foreground inline-flex w-fit items-center gap-1.5 text-sm"
         >
             <ArrowLeft class="size-4" />
-            Clientes
+            Regresar a clientes
         </Link>
 
         <div class="flex flex-wrap items-start justify-between gap-4">
             <div>
                 <div class="flex flex-wrap items-center gap-2">
-                    <h1 class="text-xl font-semibold">{{ socio.nombre }}</h1>
+                    <h1 class="text-xl font-semibold">
+                        Detalles del cliente: {{ socio.nombre }}
+                    </h1>
                     <VigenciaBadge :vigencia="membresia.vigencia" />
                     <Badge v-if="!socio.activo" variant="secondary">
                         Inactivo
@@ -190,18 +274,9 @@ const DATOS: { etiqueta: string; valor: () => string | null }[] = [
             </div>
 
             <div class="flex flex-wrap gap-2">
-                <Button
-                    size="sm"
-                    variant="outline"
-                    :disabled="entrada.processing"
-                    @click="registrar"
-                >
-                    <DoorOpen class="size-4" />
-                    Registrar entrada
-                </Button>
-                <Button size="sm" @click="irAVender">
+                <Button size="sm" @click="abrirMembresia">
                     <ShoppingCart class="size-4" />
-                    Vender membresía
+                    {{ textoVigente }}
                 </Button>
                 <Button size="sm" variant="outline" @click="abrirEditar">
                     <Pencil class="size-4" />
@@ -261,6 +336,7 @@ const DATOS: { etiqueta: string; valor: () => string | null }[] = [
                             <th class="hidden py-1.5 font-medium sm:table-cell">
                                 Venta
                             </th>
+                            <th class="py-1.5"><span class="sr-only">Acciones</span></th>
                         </tr>
                     </thead>
                     <tbody>
@@ -269,7 +345,14 @@ const DATOS: { etiqueta: string; valor: () => string | null }[] = [
                             :key="suscripcion.id"
                             class="border-t"
                         >
-                            <td class="py-2">{{ suscripcion.plan }}</td>
+                            <td class="py-2">
+                                {{ suscripcion.plan }}
+                                <span
+                                    v-if="suscripcion.corregida"
+                                    class="text-muted-foreground block text-xs"
+                                    >Fechas corregidas</span
+                                >
+                            </td>
                             <td class="py-2">
                                 {{ fmtDia(suscripcion.fecha_inicio) }}
                             </td>
@@ -288,11 +371,49 @@ const DATOS: { etiqueta: string; valor: () => string | null }[] = [
                             >
                                 {{ suscripcion.numero_venta }}
                             </td>
+                            <td class="py-2 text-right">
+                                <Button
+                                    v-if="suscripcion.estado !== 'cancelada'"
+                                    size="sm"
+                                    variant="ghost"
+                                    @click="abrirCorreccion(suscripcion)"
+                                >
+                                    Corregir fechas
+                                </Button>
+                            </td>
                         </tr>
                     </tbody>
                 </table>
             </section>
         </div>
+
+        <section v-if="correcciones.length" class="rounded-xl border p-4">
+            <h2 class="mb-3 text-sm font-semibold">
+                Correcciones de fechas
+            </h2>
+            <ul class="grid gap-3 text-sm">
+                <li
+                    v-for="correccion in correcciones"
+                    :key="correccion.id"
+                    class="grid gap-0.5"
+                >
+                    <span>
+                        {{ correccion.plan }}:
+                        {{ fmtDia(correccion.anterior[0]) }} –
+                        {{ fmtDia(correccion.anterior[1]) }}
+                        →
+                        <strong class="font-medium"
+                            >{{ fmtDia(correccion.nueva[0]) }} –
+                            {{ fmtDia(correccion.nueva[1]) }}</strong
+                        >
+                    </span>
+                    <span class="text-muted-foreground text-xs">
+                        {{ correccion.motivo }} · {{ correccion.usuario }} ·
+                        {{ fmtFechaHora(correccion.fecha) }}
+                    </span>
+                </li>
+            </ul>
+        </section>
 
         <section class="rounded-xl border p-4">
             <h2 class="mb-3 text-sm font-semibold">Últimas entradas</h2>
@@ -326,6 +447,106 @@ const DATOS: { etiqueta: string; valor: () => string | null }[] = [
             </ul>
         </section>
     </div>
+
+    <Dialog v-model:open="correccionAbierta">
+        <DialogContent class="sm:max-w-md">
+            <DialogHeader>
+                <DialogTitle>Corregir fechas</DialogTitle>
+                <DialogDescription>
+                    {{ suscripcionEnCorreccion?.plan }} · solo cambia las
+                    fechas de la membresía, no lo cobrado. Queda registrado quién
+                    lo corrigió y por qué.
+                </DialogDescription>
+            </DialogHeader>
+
+            <form class="grid gap-4" @submit.prevent="guardarCorreccion">
+                <div class="grid gap-4 sm:grid-cols-2">
+                    <div class="grid gap-2">
+                        <Label for="correccion-inicio">Desde</Label>
+                        <Input
+                            id="correccion-inicio"
+                            v-model="formCorreccion.fecha_inicio"
+                            type="date"
+                        />
+                        <InputError :message="formCorreccion.errors.fecha_inicio" />
+                    </div>
+                    <div class="grid gap-2">
+                        <Label for="correccion-fin">Hasta (último día)</Label>
+                        <Input
+                            id="correccion-fin"
+                            v-model="formCorreccion.fecha_vencimiento"
+                            type="date"
+                            :min="formCorreccion.fecha_inicio || undefined"
+                        />
+                        <InputError
+                            :message="formCorreccion.errors.fecha_vencimiento"
+                        />
+                    </div>
+                </div>
+
+                <div class="grid gap-2">
+                    <Label for="correccion-motivo">Motivo</Label>
+                    <Input
+                        id="correccion-motivo"
+                        v-model="formCorreccion.motivo"
+                        maxlength="255"
+                        placeholder="Ej.: se cargó un día de menos"
+                        autocomplete="off"
+                    />
+                    <InputError :message="formCorreccion.errors.motivo" />
+                </div>
+
+                <Button type="submit" :disabled="formCorreccion.processing">
+                    {{
+                        formCorreccion.processing
+                            ? 'Guardando...'
+                            : 'Guardar corrección'
+                    }}
+                </Button>
+            </form>
+        </DialogContent>
+    </Dialog>
+
+    <Dialog v-model:open="membresiaAbierta">
+        <DialogContent class="max-h-[90vh] overflow-y-auto sm:max-w-xl">
+            <DialogHeader>
+                <DialogTitle>{{ textoVigente }}</DialogTitle>
+                <DialogDescription>
+                    {{ socio.nombre }} · elige el plan y cómo paga. Si ya tiene
+                    una membresía vigente, la nueva empieza al día siguiente de
+                    que venza.
+                </DialogDescription>
+            </DialogHeader>
+
+            <form class="grid gap-6" @submit.prevent="cobrarMembresia">
+                <MembresiaFields
+                    :modelo="formMembresia"
+                    :planes="planes"
+                    :metodos-pago="metodosPago"
+                    :tasa="tasaCambio"
+                    :errores="erroresMembresia"
+                />
+
+                <Button
+                    type="submit"
+                    :disabled="
+                        formMembresia.processing ||
+                        !hayMembresia(formMembresia) ||
+                        recibidoInsuficiente ||
+                        !tasaCambio
+                    "
+                >
+                    {{
+                        formMembresia.processing
+                            ? 'Activando...'
+                            : formMembresia.es_credito
+                              ? 'Activar a crédito'
+                              : 'Cobrar y activar'
+                    }}
+                </Button>
+            </form>
+        </DialogContent>
+    </Dialog>
 
     <Dialog v-model:open="dialogAbierto">
         <DialogContent class="max-h-[90vh] overflow-y-auto sm:max-w-lg">

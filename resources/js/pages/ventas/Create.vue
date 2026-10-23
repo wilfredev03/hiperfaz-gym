@@ -27,7 +27,6 @@ import { Combobox } from '@/components/ui/combobox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
-import { textoDuracion } from '@/lib/socios';
 import { esMetodoEfectivo, etiquetaMetodo, iconoMetodo } from '@/lib/ventas';
 import { create as crearVenta } from '@/routes/ventas';
 import { cargar_automatica as cargarTasaAutomatica } from '@/routes/tasas_cambio';
@@ -52,8 +51,6 @@ interface ProductoOption {
     categoria: Categoria | null;
     unidad_medida: UnidadMedida;
     imagen_url: string | null;
-    // presente solo en los planes de membresía
-    plan: { duracion_dias: number } | null;
 }
 
 interface ClienteOption {
@@ -91,7 +88,6 @@ interface NuevaVentaForm {
 
 const props = defineProps<{
     // socio preseleccionado cuando se llega desde su ficha
-    clienteInicial: number | null;
     productos: ProductoOption[];
     clientes: ClienteOption[];
     metodosPago: MetodoPagoOption[];
@@ -256,8 +252,6 @@ interface LineaCarrito {
     unidadEntrada: 'g' | 'kg';
     stockActual: number;
     controlaInventario: boolean;
-    // días que dura la membresía si la línea es un plan; null en un producto común
-    duracionDias: number | null;
 }
 
 interface BorradorPago {
@@ -451,9 +445,7 @@ function agregarProducto(producto: ProductoOption) {
         const fraccionable = esFraccionable(producto.unidad_medida.abreviatura);
         carrito.push({
             producto_id: producto.id,
-            nombre: producto.plan
-                ? `${nombreParaMostrar(producto)} · ${textoDuracion(producto.plan.duracion_dias)}`
-                : nombreParaMostrar(producto),
+            nombre: nombreParaMostrar(producto),
             etiquetaVariante: etiquetaVariante(producto),
             precioUnitario: Number(producto.precio_venta),
             cantidad: '1',
@@ -462,7 +454,6 @@ function agregarProducto(producto: ProductoOption) {
             unidadEntrada: fraccionable ? 'g' : 'kg',
             stockActual: Number(producto.stock_actual),
             controlaInventario: producto.controla_inventario,
-            duracionDias: producto.plan?.duracion_dias ?? null,
         });
     }
 }
@@ -531,9 +522,7 @@ function iniciarCobro() {
     }
     ordenActiva.value.pagosEnEdicion = [];
     ordenActiva.value.esCredito = false;
-    ordenActiva.value.clienteId = carritoTieneMembresia.value
-        ? props.clienteInicial
-        : null;
+    ordenActiva.value.clienteId = null;
     ordenActiva.value.vistaPanel = 'cobro';
 }
 
@@ -614,15 +603,8 @@ function requiereTasa(metodo: MetodoPagoOption): boolean {
 
 const hayClientes = computed(() => props.clientes.length > 0);
 
-// una membresía se le vende a un socio concreto (genera su suscripción), así
-// que con un plan en el carrito el cliente es obligatorio también al contado
-const carritoTieneMembresia = computed(() =>
-    ordenActiva.value.carrito.some((linea) => linea.duracionDias !== null),
-);
-
-const necesitaCliente = computed(
-    () => ordenActiva.value.esCredito || carritoTieneMembresia.value,
-);
+// el cliente solo es obligatorio al fiar (las membresías no se venden aquí)
+const necesitaCliente = computed(() => ordenActiva.value.esCredito);
 
 const clienteOptions = computed(() =>
     props.clientes.map((cliente) => ({
@@ -659,7 +641,7 @@ function alternarCredito(valor: boolean) {
         return;
     }
     ordenActiva.value.esCredito = valor;
-    if (!valor && !carritoTieneMembresia.value) {
+    if (!valor) {
         ordenActiva.value.clienteId = null;
     }
 }
@@ -807,9 +789,7 @@ function cobrar() {
             !tasaVigenteHoy.value
                 ? 'No se puede facturar: falta registrar la tasa de cambio de hoy.'
                 : necesitaCliente.value && ordenActiva.value.clienteId === null
-                  ? carritoTieneMembresia.value
-                      ? 'Selecciona el cliente al que se le vende la membresía.'
-                      : 'Selecciona el cliente para registrar el crédito.'
+                  ? 'Selecciona el cliente para registrar el crédito.'
                   : sobranteSinVueltoUsd.value > 0.005
                     ? 'Hay un monto de más en un método sin vuelto (pago móvil, transferencia, punto de venta...): ajústalo antes de cobrar.'
                     : 'Completa el monto de cada método antes de cobrar.',
@@ -861,8 +841,7 @@ function enviarVenta(
     }
 
     http.es_credito = esCredito;
-    http.cliente_id =
-        esCredito || carritoTieneMembresia.value ? clienteId : null;
+    http.cliente_id = esCredito ? clienteId : null;
     http.items = orden.carrito.map((linea) => ({
         producto_id: linea.producto_id,
         cantidad: Number(linea.cantidad) || 0,
@@ -1447,11 +1426,8 @@ function enviarVenta(
                                     "
                                     class="text-destructive text-xs"
                                 >
-                                    {{
-                                        carritoTieneMembresia
-                                            ? 'Selecciona el cliente para poder vender la membresía.'
-                                            : 'Selecciona un cliente para poder registrar el crédito.'
-                                    }}
+                                    Selecciona un cliente para poder registrar el
+                                    crédito.
                                 </p>
 
                                 <Button

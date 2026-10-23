@@ -10,7 +10,6 @@ import type { Vigencia } from '@/lib/socios';
 import { fmtUsd } from '@/lib/ventas';
 import { show } from '@/routes/socios';
 import { index } from '@/routes/vencimientos';
-import { create as crearVenta } from '@/routes/ventas';
 
 type Vista = 'por_vencer' | 'vencidos';
 
@@ -192,8 +191,8 @@ function cuando(socio: SocioVencimiento): string {
                                 <Button as-child size="sm">
                                     <Link
                                         :href="
-                                            crearVenta({
-                                                query: { cliente: socio.id },
+                                            show.url(socio.id, {
+                                                query: { renovar: 1 },
                                             })
                                         "
                                     >

@@ -35,7 +35,7 @@ const DURACIONES_RAPIDAS = [
             <Input
                 id="nombre"
                 v-model="form.nombre"
-                placeholder="Plan Mensual, Pase de Día..."
+                placeholder="Diario, Semanal, Mensual..."
             />
             <InputError :message="form.errors.nombre" />
         </div>

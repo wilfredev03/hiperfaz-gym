@@ -1,23 +1,15 @@
 <script setup lang="ts">
-import { Head, Link, router, useForm } from '@inertiajs/vue3';
+import { Head, Link, router } from '@inertiajs/vue3';
 import { watchDebounced } from '@vueuse/core';
 import { Plus, Search, Users } from '@lucide/vue';
 import { ref } from 'vue';
-import SocioFormFields from '@/components/socios/SocioFormFields.vue';
 import VigenciaBadge from '@/components/socios/VigenciaBadge.vue';
 import { Button } from '@/components/ui/button';
-import {
-    Dialog,
-    DialogContent,
-    DialogDescription,
-    DialogHeader,
-    DialogTitle,
-} from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { fmtDia, textoRestante } from '@/lib/socios';
 import type { SocioLista } from '@/lib/socios';
 import { fmtUsd } from '@/lib/ventas';
-import { index, show, store } from '@/routes/socios';
+import { create, index, show } from '@/routes/socios';
 
 interface PaginationLink {
     url: string | null;
@@ -86,37 +78,6 @@ function cambiarFiltro(filtro: Filtro) {
         replace: true,
     });
 }
-
-// --- Nuevo socio ------------------------------------------------------------
-
-const dialogAbierto = ref(false);
-
-const form = useForm({
-    nombre: '',
-    documento: '',
-    telefono: '',
-    email: '',
-    direccion: '',
-    fecha_nacimiento: '',
-    contacto_emergencia_nombre: '',
-    contacto_emergencia_telefono: '',
-    id_acceso: '',
-    activo: true,
-});
-
-function abrirNuevo() {
-    form.reset();
-    form.clearErrors();
-    dialogAbierto.value = true;
-}
-
-function crearSocio() {
-    form.post(store.url(), {
-        onSuccess: () => {
-            dialogAbierto.value = false;
-        },
-    });
-}
 </script>
 
 <template>
@@ -132,9 +93,11 @@ function crearSocio() {
                     {{ resumen.vencidas }} vencidas
                 </p>
             </div>
-            <Button size="sm" @click="abrirNuevo">
-                <Plus class="size-4" />
-                Nuevo cliente
+            <Button as-child size="sm">
+                <Link :href="create.url()">
+                    <Plus class="size-4" />
+                    Nuevo cliente
+                </Link>
             </Button>
         </div>
 
@@ -263,23 +226,4 @@ function crearSocio() {
             </template>
         </nav>
     </div>
-
-    <Dialog v-model:open="dialogAbierto">
-        <DialogContent class="max-h-[90vh] overflow-y-auto sm:max-w-lg">
-            <DialogHeader>
-                <DialogTitle>Nuevo cliente</DialogTitle>
-                <DialogDescription
-                    >Solo el nombre es obligatorio.</DialogDescription
-                >
-            </DialogHeader>
-
-            <form class="grid gap-6" @submit.prevent="crearSocio">
-                <SocioFormFields :form="form" :mostrar-activo="false" />
-
-                <Button type="submit" :disabled="form.processing">
-                    {{ form.processing ? 'Guardando...' : 'Crear cliente' }}
-                </Button>
-            </form>
-        </DialogContent>
-    </Dialog>
 </template>
