@@ -93,7 +93,9 @@ const props = defineProps<{
 
 defineOptions({
     layout: {
-        breadcrumbs: [{ title: 'Compras', href: ordenesCompraIndex() }],
+        breadcrumbs: [
+            { title: 'Historial de compras', href: ordenesCompraIndex() },
+        ],
     },
 });
 
@@ -195,7 +197,7 @@ function anularCompra(orden: OrdenCompraDetalle) {
 </script>
 
 <template>
-    <Head title="Compras" />
+    <Head title="Historial de compras" />
 
     <div class="flex flex-1 flex-col gap-4 p-4 sm:p-6">
         <div class="flex flex-wrap items-center justify-between gap-3">
@@ -223,7 +225,7 @@ function anularCompra(orden: OrdenCompraDetalle) {
                 <Button as-child>
                     <Link :href="crearOrdenCompra()">
                         <Plus class="size-4" />
-                        Nueva compra
+                        Registrar compra
                     </Link>
                 </Button>
             </div>

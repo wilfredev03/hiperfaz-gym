@@ -55,7 +55,7 @@ const props = defineProps<{
 
 defineOptions({
     layout: {
-        breadcrumbs: [{ title: 'Nueva compra', href: crearOrdenCompra() }],
+        breadcrumbs: [{ title: 'Registrar compra', href: crearOrdenCompra() }],
     },
 });
 
@@ -305,7 +305,7 @@ function registrarCompra() {
 </script>
 
 <template>
-    <Head title="Nueva compra" />
+    <Head title="Registrar compra" />
 
     <div class="flex h-[calc(100dvh-4rem)] flex-col gap-3 p-4">
         <AlertError v-if="erroresGenerales.length" :errors="erroresGenerales" />

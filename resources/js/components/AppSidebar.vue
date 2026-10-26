@@ -5,6 +5,7 @@ import {
     CalendarClock,
     DoorOpen,
     HandCoins,
+    History,
     Lock,
     Package,
     PackagePlus,
@@ -30,7 +31,10 @@ import { index as cuentasPorCobrarIndex } from '@/routes/clientes';
 import { index as asistenciasIndex } from '@/routes/asistencias';
 import { edit as editConexion } from '@/routes/conexion';
 import { index as membresiasVendidasIndex } from '@/routes/membresias_vendidas';
-import { index as ordenesCompraIndex } from '@/routes/ordenes_compra';
+import {
+    create as crearOrdenCompra,
+    index as ordenesCompraIndex,
+} from '@/routes/ordenes_compra';
 import { index as productosIndex } from '@/routes/productos';
 import { index as sociosIndex } from '@/routes/socios';
 import { index as tasasCambioIndex } from '@/routes/tasas_cambio';
@@ -55,7 +59,11 @@ const todosLosGrupos: GrupoNav[] = [
         items: [
             { title: 'Clientes', href: sociosIndex(), icon: Users },
             { title: 'Asistencia', href: asistenciasIndex(), icon: DoorOpen },
-            { title: 'Por vencer', href: vencimientosIndex(), icon: CalendarClock },
+            {
+                title: 'Por vencer',
+                href: vencimientosIndex(),
+                icon: CalendarClock,
+            },
             {
                 title: 'Membresías vendidas',
                 href: membresiasVendidasIndex(),
@@ -75,10 +83,16 @@ const todosLosGrupos: GrupoNav[] = [
                 icon: Package,
             },
             {
-                title: 'Compras',
+                title: 'Registrar compra',
+                soloAdmin: true,
+                href: crearOrdenCompra(),
+                icon: PackagePlus,
+            },
+            {
+                title: 'Historial de compras',
                 soloAdmin: true,
                 href: ordenesCompraIndex(),
-                icon: PackagePlus,
+                icon: History,
             },
         ],
     },
