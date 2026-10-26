@@ -151,12 +151,14 @@ function cambiarFiltro(filtro: Filtro) {
                     <tr
                         v-for="socio in socios.data"
                         :key="socio.id"
-                        class="hover:bg-muted/40 border-t"
+                        class="hover:bg-muted/40 cursor-pointer border-t"
+                        @click="router.visit(show.url(socio.id))"
                     >
                         <td class="px-4 py-3">
                             <Link
                                 :href="show.url(socio.id)"
                                 class="font-medium hover:underline"
+                                @click.stop
                             >
                                 {{ socio.nombre }}
                             </Link>

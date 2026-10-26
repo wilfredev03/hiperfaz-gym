@@ -165,12 +165,23 @@ const recibidoInsuficiente = computed(
         )?.falta ?? 0) > 0,
 );
 
+// --- Lista de membresías: las más recientes y el resto bajo "Ver más" --------
+
+const MEMBRESIAS_VISIBLES = 5;
+const verTodasLasMembresias = ref(false);
+
+const membresiasVisibles = computed(() =>
+    verTodasLasMembresias.value
+        ? props.suscripciones
+        : props.suscripciones.slice(0, MEMBRESIAS_VISIBLES),
+);
+
 // --- Corregir las fechas de una membresía ---------------------------------------
 
 const correccionAbierta = ref(false);
-const suscripcionEnCorreccion = ref<(typeof props.suscripciones)[number] | null>(
-    null,
-);
+const suscripcionEnCorreccion = ref<
+    (typeof props.suscripciones)[number] | null
+>(null);
 
 const formCorreccion = useForm({
     fecha_inicio: '',
@@ -183,7 +194,10 @@ function abrirCorreccion(suscripcion: (typeof props.suscripciones)[number]) {
     formCorreccion.reset();
     formCorreccion.clearErrors();
     formCorreccion.fecha_inicio = suscripcion.fecha_inicio.slice(0, 10);
-    formCorreccion.fecha_vencimiento = suscripcion.fecha_vencimiento.slice(0, 10);
+    formCorreccion.fecha_vencimiento = suscripcion.fecha_vencimiento.slice(
+        0,
+        10,
+    );
     correccionAbierta.value = true;
 }
 
@@ -336,12 +350,14 @@ const DATOS: { etiqueta: string; valor: () => string | null }[] = [
                             <th class="hidden py-1.5 font-medium sm:table-cell">
                                 Venta
                             </th>
-                            <th class="py-1.5"><span class="sr-only">Acciones</span></th>
+                            <th class="py-1.5">
+                                <span class="sr-only">Acciones</span>
+                            </th>
                         </tr>
                     </thead>
                     <tbody>
                         <tr
-                            v-for="suscripcion in suscripciones"
+                            v-for="suscripcion in membresiasVisibles"
                             :key="suscripcion.id"
                             class="border-t"
                         >
@@ -384,13 +400,28 @@ const DATOS: { etiqueta: string; valor: () => string | null }[] = [
                         </tr>
                     </tbody>
                 </table>
+                <div
+                    v-if="suscripciones.length > MEMBRESIAS_VISIBLES"
+                    class="mt-2 flex justify-center border-t pt-2"
+                >
+                    <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        @click="verTodasLasMembresias = !verTodasLasMembresias"
+                    >
+                        {{
+                            verTodasLasMembresias
+                                ? 'Ver menos'
+                                : `Ver más (${suscripciones.length - MEMBRESIAS_VISIBLES} más)`
+                        }}
+                    </Button>
+                </div>
             </section>
         </div>
 
         <section v-if="correcciones.length" class="rounded-xl border p-4">
-            <h2 class="mb-3 text-sm font-semibold">
-                Correcciones de fechas
-            </h2>
+            <h2 class="mb-3 text-sm font-semibold">Correcciones de fechas</h2>
             <ul class="grid gap-3 text-sm">
                 <li
                     v-for="correccion in correcciones"
@@ -453,9 +484,9 @@ const DATOS: { etiqueta: string; valor: () => string | null }[] = [
             <DialogHeader>
                 <DialogTitle>Corregir fechas</DialogTitle>
                 <DialogDescription>
-                    {{ suscripcionEnCorreccion?.plan }} · solo cambia las
-                    fechas de la membresía, no lo cobrado. Queda registrado quién
-                    lo corrigió y por qué.
+                    {{ suscripcionEnCorreccion?.plan }} · solo cambia las fechas
+                    de la membresía, no lo cobrado. Queda registrado quién lo
+                    corrigió y por qué.
                 </DialogDescription>
             </DialogHeader>
 
@@ -468,7 +499,9 @@ const DATOS: { etiqueta: string; valor: () => string | null }[] = [
                             v-model="formCorreccion.fecha_inicio"
                             type="date"
                         />
-                        <InputError :message="formCorreccion.errors.fecha_inicio" />
+                        <InputError
+                            :message="formCorreccion.errors.fecha_inicio"
+                        />
                     </div>
                     <div class="grid gap-2">
                         <Label for="correccion-fin">Hasta (último día)</Label>
