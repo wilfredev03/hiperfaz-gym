@@ -134,6 +134,14 @@ Marca bajo la que se vende este producto: **Hiperfaz Gym**.
     (suscripción vigente); el terminal solo ejecuta y reporta. Ningún
     código del dominio habla con el dispositivo ni con ISAPI hasta la fase 2.
 
+12. **El WhatsApp está desacoplado, igual que el acceso.** Los recordatorios de
+    vencimiento los decide Laravel y los ejecuta un proceso Node aparte
+    (`whatsapp-bot/`, Baileys) al que solo habla `App\Services\Recordatorios\WhatsAppCliente`
+    por HTTP local con token. Nada del dominio depende de que el bot exista:
+    sin él, la cola simplemente no avanza. El `mensaje` de cada `recordatorios`
+    queda ya armado y no se edita (es lo que realmente se envió); solo cambia
+    su `estado`. Un aviso por (`suscripcion_id`, `tipo`), garantizado por `UNIQUE`.
+
 ## Estado actual
 
 Esto es una **copia limpia** de Hiperfaz Gestión (sin historial git). Todo el
@@ -264,6 +272,68 @@ socios activos que vencen en los próximos 7 días y a los que vencieron en los
   comprar N unidades crea **una** suscripción de N × `duracion_dias`; si el
   socio ya tiene una vigente, la nueva empieza el día siguiente a su vencimiento.
 
+### Recordatorios por WhatsApp (construido; admin)
+
+Página `recordatorios.index` (grupo Gimnasio): interruptor Iniciar/Detener,
+estado y QR del bot (se consulta a `recordatorios.bot` cada 4 s), cola,
+historial con filtro, plantillas y ajustes de ritmo.
+
+- **Flujo:** `recordatorios:proponer` (07:30 Caracas, o el botón "Generar cola de
+  hoy") crea filas `pendiente` en `recordatorios` para las suscripciones
+  `activa` que vencen en `dias_aviso` días (`por_vencer`, por defecto 3) y hoy
+  (`vence_hoy`). Salta clientes inactivos, sin celular venezolano válido
+  (`TelefonoVenezolano`), que ya renovaron (`VENCE_EL_SQL`) y planes de menos de
+  `duracion_minima_dias` (7; el pase de día no se "recuerda").
+  `recordatorios:enviar` corre cada minuto y llama a `MotorEnvio::tick()`, que
+  manda **a lo sumo uno** por llamada y solo si: `recordatorio_ajustes.activo`,
+  dentro de `hora_inicio`–`hora_fin` (08:00–18:00), sin descanso ni espera en
+  curso y bot conectado. Espera aleatoria 60–180 s entre mensajes; descanso de
+  10–15 min cada 8–12 enviados. Todo el estado del motor vive en
+  `recordatorio_ajustes` (una fila por instalación), no en memoria.
+- **Mensajes:** `recordatorio_plantillas` con variables `{nombre} {nombre_completo}
+  {plan} {dias} {fecha}` y alternativas `[Hola|Buenas]` que se sortean en cada
+  envío; la plantilla se elige al azar sin repetir la anterior. Una variable
+  inexistente se rechaza al guardar. Se siembran con `RecordatorioPlantillaSeeder`
+  (lo llama `GimnasioMenuSeeder`).
+- **Robustez:** `fecha_aviso` caduca el aviso (pasado el día se cancela, el
+  "vence en 3 días" ya sería falso); se cancela si el cliente renovó o la
+  suscripción se canceló; 3 intentos y luego `fallido` (un número sin WhatsApp
+  falla de una vez); un `enviando` colgado más de 10 min pasa a `fallido`, no
+  se reintenta solo para no duplicar. El piso de espera entre mensajes es 30 s.
+- **Historial de conexión:** pestaña "Conexión" del dashboard, sobre
+  `whatsapp_eventos` (solo inserción, el modelo bloquea update/delete). El bot
+  anota cada evento de la sesión (QR pendiente, conectado, conexión perdida,
+  reconectado con la duración de la caída, sesión cerrada desde el teléfono) en
+  `eventos.jsonl` con un id creciente; Laravel lo consulta con un cursor
+  (`SincronizadorEventosBot`, cada minuto desde `recordatorios:enviar` y al
+  abrir el dashboard) y lo copia con `insertOrIgnore`. El QR se muestra en el
+  mismo panel (`BotPanel`); al cambiar el estado de la sesión la página recarga
+  el historial. Los cierres hechos desde el panel (`cierre_manual`) los anota
+  Laravel con el usuario. El reinicio con código 515 que sigue al escaneo del QR
+  no cuenta como caída.
+- **Vigencia del QR:** la ventana para escanear es `QR_TIMEOUT_SEG` (120 s,
+  `whatsapp-bot/.env`); WhatsApp renueva la imagen cada ~20 s. Al agotarse, el
+  bot pasa a `qr_expirado` (evento `qr_expirado`), no reintenta solo y el panel
+  muestra "Generar nuevo QR" (`recordatorios.bot.reconectar` → `POST /reconectar`,
+  que Laravel anota como `reconexion_manual` con el usuario). El panel muestra
+  la cuenta regresiva con `qr_expira_en`. Cada conexión nueva invalida a la
+  anterior (`generacion`) para que un socket viejo no dispare reconexiones.
+- **Bot:** `whatsapp-bot/` (ver su README). Variables `WHATSAPP_URL` y
+  `WHATSAPP_TOKEN` en `.env`; config en `config/whatsapp.php`. Hay un bot,
+  un puerto y un número por instalación. La sesión (`whatsapp-bot/auth/`) va
+  en los respaldos. Baileys es no oficial: usar un número dedicado.
+
+### Datos de demostración (a mano, no están en `DatabaseSeeder`)
+
+Requieren `GimnasioMenuSeeder` y `MetodoPagoSeeder`. Cada membresía sembrada
+nace de una venta real con fecha pasada (trait
+`Database\Seeders\Concerns\RegistraMembresiasHistoricas`), ligada al cierre de
+caja de ese día, que queda cerrado con sus totales y desglose por método.
+- `ClientesMembresiasSeeder`: 200 clientes con 1–3 membresías, ~70 % vigentes.
+- `ClientesVencidosSeeder`: 60 clientes cuya última membresía ya venció
+  (70 % en los últimos 30 días, el resto hasta 180); algunos deben la última.
+Cada corrida agrega más clientes; para repetir desde cero, `migrate:fresh --seed`.
+
 ### Fase 2 (no empezar)
 
 Integración con el terminal Hikvision. No se conoce el modelo, cómo está
@@ -281,7 +351,10 @@ Obligatorio antes de dar el sistema por "en producción" con un cliente real:
    real y encolar `CierreCajaCerrado` (hoy se envía síncrono desde
    `CierreCajaController`). Supervisor para `queue:work` y cron de
    `schedule:run` en el VPS (lo necesita también la tasa BCV).
-3. **Despliegue documentado:** `docs/despliegue.md` con Nginx, PHP-FPM,
+3. **Bot de WhatsApp:** `npm install` en `whatsapp-bot/`, `.env` con el token,
+   programa de Supervisor (ver su README) y escanear el QR con el número del
+   gimnasio. Sin esto el módulo de recordatorios no envía nada.
+4. **Despliegue documentado:** `docs/despliegue.md` con Nginx, PHP-FPM,
    Postgres, Supervisor y el alta de un cliente nuevo (carpeta + BD + dominio).
 
 ## Backlog heredado
