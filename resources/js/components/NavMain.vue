@@ -19,7 +19,7 @@ withDefaults(
     { label: 'Platform' },
 );
 
-const { isCurrentUrl } = useCurrentUrl();
+const { isCurrentUrl, isCurrentOrParentUrl } = useCurrentUrl();
 const { isMobile, setOpenMobile } = useSidebar();
 
 function onNavigate() {
@@ -36,7 +36,11 @@ function onNavigate() {
             <SidebarMenuItem v-for="item in items" :key="item.title">
                 <SidebarMenuButton
                     as-child
-                    :is-active="isCurrentUrl(item.href)"
+                    :is-active="
+                        item.incluirSubrutas
+                            ? isCurrentOrParentUrl(item.href)
+                            : isCurrentUrl(item.href)
+                    "
                     :tooltip="item.title"
                 >
                     <Link :href="item.href" @click="onNavigate">
