@@ -1,0 +1,18 @@
+{
+    "name": "hiperfaz-whatsapp-bot",
+    "version": "1.0.0",
+    "private": true,
+    "type": "module",
+    "description": "Servicio de WhatsApp (Baileys) para los recordatorios de Hiperfaz Gym",
+    "scripts": {
+        "start": "node --env-file=.env index.js"
+    },
+    "engines": {
+        "node": ">=20.6"
+    },
+    "dependencies": {
+        "@whiskeysockets/baileys": "^7.0.0-rc14",
+        "pino": "^10.4.0",
+        "qrcode": "^1.5.4"
+    }
+}
