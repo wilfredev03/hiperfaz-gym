@@ -54,7 +54,7 @@
 
         {{-- encabezado --}}
         <tr>
-            <td class="pad head-line" bgcolor="#ffffff" style="padding:22px 28px;background:#ffffff;background-image:linear-gradient(#ffffff,#ffffff);border-bottom:3px solid #171717;">
+            <td class="pad head-line" bgcolor="#ffffff" style="padding:22px 28px;background:#ffffff;background-image:linear-gradient(#ffffff,#ffffff);border-bottom:3px solid #E61C24;">
                 @if ($logoPath)
                     <img src="{{ $message->embed($logoPath) }}" alt="{{ $negocio['nombre'] }}" height="56" style="display:block;margin:0 auto;height:56px;width:auto;max-width:240px;border:0;">
                 @else

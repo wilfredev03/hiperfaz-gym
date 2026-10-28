@@ -100,45 +100,58 @@
 }
 
 /*
-  Paleta por instalación: 8 variables (--brand-*) las puede fijar cada
-  cliente vía .env (ver config/branding.php + resources/views/app.blade.php,
-  que las vuelca aquí como overrides de :root). Sin ellas, cae en la paleta
-  neutra por defecto (blanco/negro de shadcn/Laravel Kit) escrita abajo. El
-  resto de los tokens (muted, border, sidebar-accent, etc.) se derivan de
-  esos 8 con color-mix, no son configurables por separado — mantener la
-  lista de variables de marca corta a propósito.
+  Paleta de Hiperfaz Gym (escrita abajo como valores por defecto):
+    primary #E61C24 (rojo de marca) · background #111111 · steel #8A929A
+    light #E2E8F0 · white #FFFFFF
+  Una instalación puede sobreescribirla con 8 variables (--brand-*) vía .env
+  (ver config/branding.php + resources/views/app.blade.php, que las vuelca
+  aquí como overrides de :root). El resto de los tokens (muted, border,
+  sidebar-accent, etc.) se derivan de esos con color-mix, no son
+  configurables por separado — mantener la lista de variables de marca
+  corta a propósito.
+
+  Oscuro es el modo nativo de la marca (negro + rojo). El claro lo invierte:
+  fondo blanco, texto #111111, secondary = light y la barra lateral en un
+  gris-azulado claro (derivado de light) para separarse del contenido. El
+  steel solo pasa AA como texto sobre fondo oscuro; en claro se oscurece
+  para --muted-foreground.
 */
 :root {
-    --background: var(--brand-background, hsl(0 0% 100%));
-    --foreground: var(--brand-foreground, hsl(0 0% 3.9%));
+    --steel: #8a929a;
+
+    --background: var(--brand-background, #ffffff);
+    --foreground: var(--brand-foreground, #111111);
     --card: var(--background);
     --card-foreground: var(--foreground);
     --popover: var(--background);
     --popover-foreground: var(--foreground);
-    --primary: var(--brand-primary, hsl(0 0% 9%));
-    --primary-foreground: var(--brand-primary-foreground, hsl(0 0% 98%));
-    --primary-hover: color-mix(in srgb, var(--primary) 85%, white);
-    --secondary: var(--brand-secondary, hsl(0 0% 92.1%));
-    --secondary-foreground: var(--brand-secondary-foreground, hsl(0 0% 9%));
+    --primary: var(--brand-primary, #e61c24);
+    --primary-foreground: var(--brand-primary-foreground, #ffffff);
+    --primary-hover: color-mix(in srgb, var(--primary) 88%, black);
+    --secondary: var(--brand-secondary, #e2e8f0);
+    --secondary-foreground: var(--brand-secondary-foreground, #111111);
     --secondary-hover: color-mix(in srgb, var(--secondary) 88%, black);
     --muted: color-mix(in srgb, var(--secondary) 60%, var(--background));
-    --muted-foreground: color-mix(in srgb, var(--foreground) 62%, transparent);
+    --muted-foreground: color-mix(in srgb, var(--steel) 70%, var(--foreground));
     --accent: color-mix(in srgb, var(--secondary) 45%, var(--background));
     --accent-foreground: var(--secondary-foreground);
     --destructive: hsl(0 84.2% 60.2%);
     --destructive-foreground: hsl(0 0% 98%);
-    --border: color-mix(in srgb, var(--foreground) 8%, var(--background));
-    --input: color-mix(in srgb, var(--foreground) 11%, var(--background));
+    --border: color-mix(in srgb, var(--steel) 30%, var(--background));
+    --input: color-mix(in srgb, var(--steel) 42%, var(--background));
     --ring: var(--primary);
-    --chart-1: hsl(12 76% 61%);
-    --chart-2: hsl(173 58% 39%);
-    --chart-3: hsl(197 37% 24%);
-    --chart-4: hsl(43 74% 66%);
-    --chart-5: hsl(27 87% 67%);
+    --chart-1: #e61c24;
+    --chart-2: #8a929a;
+    --chart-3: #111111;
+    --chart-4: hsl(357 70% 35%);
+    --chart-5: hsl(210 12% 45%);
     --radius: 0.5rem;
 
-    --sidebar-background: var(--brand-sidebar-background, hsl(0 0% 98%));
-    --sidebar-foreground: var(--brand-sidebar-foreground, hsl(240 5.3% 26.1%));
+    --sidebar-background: var(
+        --brand-sidebar-background,
+        color-mix(in srgb, #e2e8f0 45%, white)
+    );
+    --sidebar-foreground: var(--brand-sidebar-foreground, #111111);
     --sidebar-primary: var(--primary);
     --sidebar-primary-foreground: var(--primary-foreground);
     --sidebar-accent: color-mix(
@@ -156,38 +169,41 @@
 }
 
 .dark {
-    --background: hsl(0 0% 3.9%);
-    --foreground: hsl(0 0% 98%);
-    --card: var(--background);
+    --background: var(--brand-background, #111111);
+    --foreground: var(--brand-foreground, #e2e8f0);
+    /* tarjetas y menús un escalón por encima del fondo para dar profundidad
+       sin sombras (en #111 las sombras no se ven) */
+    --card: color-mix(in srgb, var(--foreground) 4%, var(--background));
     --card-foreground: var(--foreground);
-    --popover: var(--background);
+    --popover: color-mix(in srgb, var(--foreground) 6%, var(--background));
     --popover-foreground: var(--foreground);
-    --primary: var(--brand-primary, hsl(0 0% 98%));
-    --primary-foreground: var(--brand-primary-foreground, hsl(0 0% 9%));
-    --primary-hover: color-mix(in srgb, var(--primary) 85%, black);
-    --secondary: var(--brand-secondary, hsl(0 0% 14.9%));
-    --secondary-foreground: var(--brand-secondary-foreground, hsl(0 0% 98%));
+    --primary: var(--brand-primary, #e61c24);
+    --primary-foreground: var(--brand-primary-foreground, #ffffff);
+    --primary-hover: color-mix(in srgb, var(--primary) 88%, black);
+    --secondary: var(--brand-secondary, color-mix(in srgb, var(--steel) 20%, #111111));
+    --secondary-foreground: var(--brand-secondary-foreground, #e2e8f0);
     --secondary-hover: color-mix(in srgb, var(--secondary) 85%, white);
     --muted: color-mix(in srgb, var(--secondary) 60%, var(--background));
-    --muted-foreground: color-mix(in srgb, var(--foreground) 62%, transparent);
-    --accent: color-mix(in srgb, var(--secondary) 45%, var(--background));
+    --muted-foreground: var(--steel);
+    --accent: color-mix(in srgb, var(--secondary) 55%, var(--background));
     --accent-foreground: var(--secondary-foreground);
     --destructive: hsl(0 84% 60%);
     --destructive-foreground: hsl(0 0% 98%);
-    --border: color-mix(in srgb, var(--foreground) 14%, var(--background));
-    --input: color-mix(in srgb, var(--foreground) 18%, var(--background));
+    --border: color-mix(in srgb, var(--steel) 24%, var(--background));
+    --input: color-mix(in srgb, var(--steel) 32%, var(--background));
     --ring: var(--primary);
-    --chart-1: hsl(220 70% 50%);
-    --chart-2: hsl(160 60% 45%);
-    --chart-3: hsl(30 80% 55%);
-    --chart-4: hsl(280 65% 60%);
-    --chart-5: hsl(340 75% 55%);
+    --chart-1: #e61c24;
+    --chart-2: #8a929a;
+    --chart-3: #e2e8f0;
+    --chart-4: hsl(357 70% 38%);
+    --chart-5: hsl(210 12% 45%);
 
     /* La barra lateral usa el mismo --brand-sidebar-* en claro y oscuro a
        propósito: si el cliente lo define, es su identidad de marca y no
-       debería cambiar con el modo. */
-    --sidebar-background: var(--brand-sidebar-background, hsl(0 0% 7%));
-    --sidebar-foreground: var(--brand-sidebar-foreground, hsl(0 0% 95.9%));
+       debería cambiar con el modo. Por defecto es oscura en ambos; en
+       oscuro baja un tono bajo el fondo para separarse del contenido. */
+    --sidebar-background: var(--brand-sidebar-background, #0a0a0a);
+    --sidebar-foreground: var(--brand-sidebar-foreground, #e2e8f0);
     --sidebar-primary: var(--primary);
     --sidebar-primary-foreground: var(--primary-foreground);
     --sidebar-accent: color-mix(
@@ -214,8 +230,8 @@
     }
 
     ::selection {
-        background: var(--foreground);
-        color: var(--background);
+        background: var(--primary);
+        color: var(--primary-foreground);
     }
 
     ::-webkit-scrollbar {
