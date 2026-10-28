@@ -15,10 +15,18 @@ use App\Services\Recordatorios\SincronizadorEventosBot;
 use App\Services\Recordatorios\WhatsAppCliente;
 use Illuminate\Support\Facades\Http;
 
+beforeEach(function () {
+    $this->planes = [];
+});
+
 /** Suscripción activa de un cliente con teléfono válido que vence dentro de $dias. */
 function suscripcionQueVenceEn(int $dias, array $cliente = [], int $duracion = 30): Suscripcion
 {
-    $plan = Plan::factory()->duracion($duracion)->create();
+    // un plan por duración y por prueba: la fábrica de planes crea un producto
+    // de nombre único por llamada y la lista de nombres se agota
+    $planes = test()->planes;
+    $plan = $planes[$duracion] ??= Plan::factory()->duracion($duracion)->create();
+    test()->planes = $planes;
 
     return Suscripcion::factory()->create([
         'cliente_id' => Cliente::factory()->create(['telefono' => '04141234567', ...$cliente])->id,
@@ -298,7 +306,8 @@ test('solo el admin entra al dashboard de recordatorios', function () {
         ->assertInertia(fn ($page) => $page
             ->component('recordatorios/Index', false)
             ->where('ajustes.activo', false)
-            ->where('resumen.pendientes', 0));
+            ->where('progreso.total', 0)
+            ->where('motor.mensajes_para_descanso', null));
 });
 
 test('iniciar y detener cambian el interruptor', function () {
@@ -471,4 +480,52 @@ test('se guardan los eventos de QR expirado que reporta el bot', function () {
 
     expect(app(SincronizadorEventosBot::class)->sincronizar())->toBe(1);
     expect(WhatsAppEvento::firstOrFail()->tipo)->toBe('qr_expirado');
+});
+
+// --- Avance de la cola y tiempos del panel ---------------------------------
+
+test('el panel informa cuántos avisos de hoy se enviaron y cuántos faltan', function () {
+    pendiente();
+    pendiente();
+    pendiente(['estado' => 'enviado', 'enviado_en' => now()]);
+    pendiente(['estado' => 'fallido']);
+    pendiente(['estado' => 'cancelado']);
+    pendiente(['estado' => 'enviado', 'enviado_en' => now()->subDay(), 'fecha_aviso' => today()->subDay()->toDateString()]); // de ayer: no cuenta
+
+    $this->actingAs(User::factory()->create())
+        ->get(route('recordatorios.index'))
+        ->assertInertia(fn ($page) => $page
+            ->where('progreso.total', 5)
+            ->where('progreso.enviados', 1)
+            ->where('progreso.pendientes', 2)
+            ->where('progreso.fallidos', 1)
+            ->where('progreso.cancelados', 1));
+});
+
+test('el panel recibe los tiempos del motor para la cuenta regresiva', function () {
+    botConectado();
+    motorActivo();
+    pendiente();
+    pendiente();
+    app(MotorEnvio::class)->tick();
+
+    $this->actingAs(User::factory()->create())
+        ->get(route('recordatorios.index'))
+        ->assertInertia(fn ($page) => $page
+            ->where('motor.dentro_de_horario', true)
+            ->where('motor.enviados_desde_descanso', 1)
+            ->where('motor.mensajes_para_descanso', 2)
+            ->has('motor.servidor_ahora')
+            ->has('motor.ultimo_envio_at')
+            ->where('motor.proximo_envio_at', fn ($proximo) => $proximo !== null));
+});
+
+test('recordatorios:enviar --una-vez evalúa una sola vez y envía si toca', function () {
+    botConectado();
+    motorActivo();
+    $aviso = pendiente();
+
+    $this->artisan('recordatorios:enviar --una-vez')->assertSuccessful();
+
+    expect($aviso->fresh()->estado)->toBe('enviado');
 });

@@ -91,19 +91,6 @@ export function fmtFechaHora(iso: string | null): string {
     });
 }
 
-/** Segundos restantes hasta una fecha ISO ("" si ya pasó o no hay). */
-export function cuentaRegresiva(iso: string | null, ahora: number): string {
-    if (!iso) {
-        return '';
-    }
-
-    const segundos = Math.max(0, Math.round((new Date(iso).getTime() - ahora) / 1000));
-    const m = Math.floor(segundos / 60);
-    const s = String(segundos % 60).padStart(2, '0');
-
-    return `${m}:${s}`;
-}
-
 export type TipoEventoBot =
     | 'servicio_iniciado'
     | 'qr_pendiente'
@@ -162,4 +149,24 @@ export function fmtFechaHoraSeg(iso: string | null): string {
         minute: '2-digit',
         second: '2-digit',
     });
+}
+
+/** Estado interno del motor de envío, para la cuenta regresiva del panel. */
+export interface MotorEstado {
+    dentro_de_horario: boolean;
+    servidor_ahora: string;
+    proximo_envio_at: string | null;
+    descanso_hasta: string | null;
+    ultimo_envio_at: string | null;
+    enviados_desde_descanso: number;
+    mensajes_para_descanso: number | null;
+}
+
+/** Cómo va la cola de hoy: cuántos avisos se propusieron y en qué quedaron. */
+export interface ProgresoCola {
+    total: number;
+    enviados: number;
+    pendientes: number;
+    fallidos: number;
+    cancelados: number;
 }

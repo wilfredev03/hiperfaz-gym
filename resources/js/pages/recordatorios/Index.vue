@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { Head, Link, router } from '@inertiajs/vue3';
-import { ListPlus, Play, Square, TriangleAlert } from '@lucide/vue';
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { ListPlus, Play, Square } from '@lucide/vue';
+import { onBeforeUnmount, onMounted, ref } from 'vue';
 import {
     detener,
     iniciar,
@@ -9,16 +9,18 @@ import {
 } from '@/actions/App/Http/Controllers/RecordatorioController';
 import AjustesPanel from '@/components/recordatorios/AjustesPanel.vue';
 import BotPanel from '@/components/recordatorios/BotPanel.vue';
+import EstadoEnvios from '@/components/recordatorios/EstadoEnvios.vue';
 import HistorialConexion from '@/components/recordatorios/HistorialConexion.vue';
 import ListaRecordatorios from '@/components/recordatorios/ListaRecordatorios.vue';
 import PlantillasPanel from '@/components/recordatorios/PlantillasPanel.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { cuentaRegresiva } from '@/lib/recordatorios';
 import type {
     Ajustes,
     Conexiones,
+    MotorEstado,
     Plantilla,
+    ProgresoCola,
     RecordatorioFila,
 } from '@/lib/recordatorios';
 import { index } from '@/routes/recordatorios';
@@ -33,17 +35,8 @@ interface PaginationLink {
 
 const props = defineProps<{
     ajustes: Ajustes;
-    motor: {
-        dentro_de_horario: boolean;
-        proximo_envio_at: string | null;
-        descanso_hasta: string | null;
-    };
-    resumen: {
-        pendientes: number;
-        enviados_hoy: number;
-        fallidos: number;
-        cancelados_hoy: number;
-    };
+    motor: MotorEstado;
+    progreso: ProgresoCola;
     cola: RecordatorioFila[];
     historial: { data: RecordatorioFila[]; links: PaginationLink[] };
     filtro: 'enviado' | 'fallido' | 'cancelado' | null;
@@ -61,57 +54,37 @@ defineOptions({
 const vista = ref<Vista>('cola');
 const botConectado = ref(false);
 
-// reloj para las cuentas regresivas y recarga suave de los datos del motor
-const ahora = ref(Date.now());
-let reloj: number | undefined;
+// Recarga suave de lo que cambia solo mientras la página está abierta. El
+// estado del motor y el avance de la cola se piden seguido (la cuenta regresiva
+// se dibuja en el navegador, pero cada mensaje enviado la reinicia); el
+// historial y la conexión, que pesan más, con menos frecuencia.
+const RECARGA_RAPIDA_MS = 4000;
 let recarga: number | undefined;
+let ciclos = 0;
 
 onMounted(() => {
-    reloj = window.setInterval(() => (ahora.value = Date.now()), 1000);
     recarga = window.setInterval(() => {
-        if (document.visibilityState === 'visible') {
-            router.reload({
-                only: ['motor', 'resumen', 'cola', 'historial', 'ajustes', 'conexiones'],
-            });
+        if (document.visibilityState !== 'visible') {
+            return;
         }
-    }, 15000);
+
+        ciclos++;
+        const lenta = ciclos % 8 === 0; // cada ~32 s
+
+        router.reload({
+            only: lenta
+                ? ['motor', 'progreso', 'cola', 'ajustes', 'historial', 'conexiones']
+                : ['motor', 'progreso', 'cola', 'ajustes'],
+        });
+    }, RECARGA_RAPIDA_MS);
 });
+onBeforeUnmount(() => window.clearInterval(recarga));
 
 // el historial de conexión se refresca en cuanto cambia el estado de la
 // sesión (se genera el QR, se escanea, se cae, se recupera)
 function recargarConexiones() {
     router.reload({ only: ['conexiones'] });
 }
-onBeforeUnmount(() => {
-    window.clearInterval(reloj);
-    window.clearInterval(recarga);
-});
-
-const estadoMotor = computed(() => {
-    if (!props.ajustes.activo) {
-        return 'Detenido';
-    }
-    if (!props.motor.dentro_de_horario) {
-        return `Fuera de horario (${props.ajustes.hora_inicio} a ${props.ajustes.hora_fin})`;
-    }
-    if (!botConectado.value) {
-        return 'Esperando la conexión de WhatsApp';
-    }
-
-    const descanso = cuentaRegresiva(props.motor.descanso_hasta, ahora.value);
-    if (props.motor.descanso_hasta && descanso !== '0:00') {
-        return `En descanso: reanuda en ${descanso}`;
-    }
-
-    const espera = cuentaRegresiva(props.motor.proximo_envio_at, ahora.value);
-    if (props.motor.proximo_envio_at && espera !== '0:00') {
-        return `Próximo mensaje en ${espera}`;
-    }
-
-    return props.resumen.pendientes > 0
-        ? 'Enviando...'
-        : 'Sin mensajes pendientes';
-});
 
 function accion(url: string) {
     router.post(url, {}, { preserveScroll: true });
@@ -164,9 +137,6 @@ const FILTROS: { id: string | null; texto: string }[] = [
                                 {{ ajustes.activo ? 'Activos' : 'Detenidos' }}
                             </Badge>
                         </div>
-                        <p class="text-muted-foreground text-sm tabular-nums">
-                            {{ estadoMotor }}
-                        </p>
                     </div>
 
                     <div class="flex flex-wrap gap-2">
@@ -192,42 +162,13 @@ const FILTROS: { id: string | null; texto: string }[] = [
                     </div>
                 </div>
 
-                <p
-                    v-if="ajustes.activo && !botConectado"
-                    class="bg-muted/60 flex items-start gap-2 rounded-lg p-3 text-sm"
-                >
-                    <TriangleAlert class="mt-0.5 size-4 shrink-0" />
-                    Los envíos están activos pero WhatsApp no está conectado:
-                    no saldrá ningún mensaje hasta vincular el número.
-                </p>
-
-                <div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                    <div class="rounded-lg border p-3">
-                        <p class="text-muted-foreground text-xs">Pendientes</p>
-                        <p class="text-2xl font-semibold">{{ resumen.pendientes }}</p>
-                    </div>
-                    <div class="rounded-lg border p-3">
-                        <p class="text-muted-foreground text-xs">Enviados hoy</p>
-                        <p class="text-2xl font-semibold">{{ resumen.enviados_hoy }}</p>
-                    </div>
-                    <button
-                        type="button"
-                        class="hover:bg-accent rounded-lg border p-3 text-left"
-                        @click="filtrarHistorial('fallido')"
-                    >
-                        <p class="text-muted-foreground text-xs">Fallidos hoy</p>
-                        <p
-                            class="text-2xl font-semibold"
-                            :class="{ 'text-destructive': resumen.fallidos > 0 }"
-                        >
-                            {{ resumen.fallidos }}
-                        </p>
-                    </button>
-                    <div class="rounded-lg border p-3">
-                        <p class="text-muted-foreground text-xs">Cancelados hoy</p>
-                        <p class="text-2xl font-semibold">{{ resumen.cancelados_hoy }}</p>
-                    </div>
-                </div>
+                <EstadoEnvios
+                    :ajustes="ajustes"
+                    :motor="motor"
+                    :progreso="progreso"
+                    :bot-conectado="botConectado"
+                    @ver-fallidos="filtrarHistorial('fallido')"
+                />
             </div>
 
             <BotPanel

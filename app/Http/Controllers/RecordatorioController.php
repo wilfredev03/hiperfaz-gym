@@ -33,7 +33,6 @@ class RecordatorioController extends Controller
     {
         $ajuste = RecordatorioAjuste::actual();
         $filtro = in_array($request->query('estado'), self::FILTROS_HISTORIAL, true) ? $request->query('estado') : null;
-        $hoy = now()->startOfDay();
 
         $historial = Recordatorio::query()
             ->with('cliente:id,nombre')
@@ -51,15 +50,17 @@ class RecordatorioController extends Controller
             ]),
             'motor' => [
                 'dentro_de_horario' => $ajuste->dentroDeHorario(),
+                // hora del servidor, para que la cuenta regresiva no dependa del reloj del navegador
+                'servidor_ahora' => now()->toIso8601String(),
                 'proximo_envio_at' => $ajuste->proximo_envio_at?->isFuture() ? $ajuste->proximo_envio_at->toIso8601String() : null,
                 'descanso_hasta' => $ajuste->descanso_hasta?->isFuture() ? $ajuste->descanso_hasta->toIso8601String() : null,
+                // para dibujar cuánto de la espera actual ya transcurrió
+                'ultimo_envio_at' => Recordatorio::where('estado', 'enviado')->latest('enviado_en')->first()?->enviado_en?->toIso8601String(),
+                'enviados_desde_descanso' => $ajuste->enviados_desde_descanso,
+                'mensajes_para_descanso' => $ajuste->mensajes_para_descanso,
             ],
-            'resumen' => [
-                'pendientes' => Recordatorio::where('estado', 'pendiente')->count(),
-                'enviados_hoy' => Recordatorio::where('estado', 'enviado')->where('enviado_en', '>=', $hoy)->count(),
-                'fallidos' => Recordatorio::where('estado', 'fallido')->where('updated_at', '>=', $hoy)->count(),
-                'cancelados_hoy' => Recordatorio::where('estado', 'cancelado')->where('updated_at', '>=', $hoy)->count(),
-            ],
+            // avance de la cola de hoy: los avisos que se propusieron para hoy y en qué quedaron
+            'progreso' => $this->progresoDeHoy(),
             'cola' => Recordatorio::query()
                 ->with('cliente:id,nombre')
                 ->whereIn('estado', ['pendiente', 'enviando'])
@@ -234,6 +235,32 @@ class RecordatorioController extends Controller
         }
 
         return back();
+    }
+
+    /**
+     * Avance de la cola de hoy: de los avisos propuestos para hoy, cuántos ya
+     * salieron y cuántos faltan. Los fallidos y cancelados cuentan como
+     * "resueltos sin enviar", así que la barra llega a 100 % cuando no queda
+     * nada por procesar.
+     *
+     * @return array{total: int, enviados: int, pendientes: int, fallidos: int, cancelados: int}
+     */
+    private function progresoDeHoy(): array
+    {
+        $porEstado = Recordatorio::query()
+            ->whereDate('fecha_aviso', today())
+            ->selectRaw('estado, count(*) as total')
+            ->groupBy('estado')
+            ->pluck('total', 'estado');
+
+        return [
+            'total' => (int) $porEstado->sum(),
+            'enviados' => (int) ($porEstado['enviado'] ?? 0),
+            // "enviando" es un mensaje en pleno envío: todavía no salió
+            'pendientes' => (int) (($porEstado['pendiente'] ?? 0) + ($porEstado['enviando'] ?? 0)),
+            'fallidos' => (int) ($porEstado['fallido'] ?? 0),
+            'cancelados' => (int) ($porEstado['cancelado'] ?? 0),
+        ];
     }
 
     /**
