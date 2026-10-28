@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Link, usePage } from '@inertiajs/vue3';
 import {
+    BellRing,
     CalendarCheck,
     CalendarClock,
     DoorOpen,
@@ -36,6 +37,7 @@ import {
     index as ordenesCompraIndex,
 } from '@/routes/ordenes_compra';
 import { index as productosIndex } from '@/routes/productos';
+import { index as recordatoriosIndex } from '@/routes/recordatorios';
 import { index as sociosIndex } from '@/routes/socios';
 import { index as tasasCambioIndex } from '@/routes/tasas_cambio';
 import { index as vencimientosIndex } from '@/routes/vencimientos';
@@ -57,7 +59,12 @@ const todosLosGrupos: GrupoNav[] = [
     {
         label: 'Gimnasio',
         items: [
-            { title: 'Clientes', href: sociosIndex(), icon: Users },
+            {
+                title: 'Clientes',
+                href: sociosIndex(),
+                icon: Users,
+                incluirSubrutas: true,
+            },
             { title: 'Asistencia', href: asistenciasIndex(), icon: DoorOpen },
             {
                 title: 'Por vencer',
@@ -68,6 +75,12 @@ const todosLosGrupos: GrupoNav[] = [
                 title: 'Membresías vendidas',
                 href: membresiasVendidasIndex(),
                 icon: CalendarCheck,
+            },
+            {
+                title: 'Recordatorios',
+                soloAdmin: true,
+                href: recordatoriosIndex(),
+                icon: BellRing,
             },
         ],
     },
