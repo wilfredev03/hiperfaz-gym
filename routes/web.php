@@ -10,6 +10,8 @@ use App\Http\Controllers\OrdenCompraController;
 use App\Http\Controllers\PlanController;
 use App\Http\Controllers\ProductoController;
 use App\Http\Controllers\ProveedorController;
+use App\Http\Controllers\RecordatorioController;
+use App\Http\Controllers\RecordatorioPlantillaController;
 use App\Http\Controllers\ReporteController;
 use App\Http\Controllers\SocioController;
 use App\Http\Controllers\SucursalController;
@@ -66,6 +68,24 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::post('ordenes_compra', [OrdenCompraController::class, 'store'])->name('ordenes_compra.store');
         Route::get('ordenes_compra/{orden_compra}', [OrdenCompraController::class, 'show'])->name('ordenes_compra.show');
         Route::post('ordenes_compra/{orden_compra}/anular', [OrdenCompraController::class, 'anular'])->name('ordenes_compra.anular');
+
+        // recordatorios de membresías por WhatsApp (bot de Baileys, ver whatsapp-bot/)
+        Route::prefix('recordatorios')->name('recordatorios.')->group(function () {
+            Route::get('/', [RecordatorioController::class, 'index'])->name('index');
+            Route::get('bot', [RecordatorioController::class, 'bot'])->name('bot');
+            Route::post('bot/desconectar', [RecordatorioController::class, 'desconectarBot'])->name('bot.desconectar');
+            Route::post('bot/reconectar', [RecordatorioController::class, 'reconectarBot'])->name('bot.reconectar');
+            Route::post('iniciar', [RecordatorioController::class, 'iniciar'])->name('iniciar');
+            Route::post('detener', [RecordatorioController::class, 'detener'])->name('detener');
+            Route::post('proponer', [RecordatorioController::class, 'proponer'])->name('proponer');
+            Route::put('ajustes', [RecordatorioController::class, 'ajustes'])->name('ajustes');
+            Route::post('prueba', [RecordatorioController::class, 'prueba'])->name('prueba');
+            Route::post('{recordatorio}/cancelar', [RecordatorioController::class, 'cancelar'])->name('cancelar');
+            Route::post('{recordatorio}/reintentar', [RecordatorioController::class, 'reintentar'])->name('reintentar');
+        });
+        Route::resource('recordatorio_plantillas', RecordatorioPlantillaController::class)
+            ->parameters(['recordatorio_plantillas' => 'plantilla'])
+            ->only(['store', 'update', 'destroy']);
 
         Route::prefix('reportes')->name('reportes.')->group(function () {
             Route::get('ventas_por_periodo', [ReporteController::class, 'ventasPorPeriodo'])->name('ventas_por_periodo');

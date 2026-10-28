@@ -47,6 +47,8 @@ class GimnasioMenuSeeder extends Seeder
             Plan::firstOrCreate(['producto_id' => $producto->id], ['duracion_dias' => $dias]);
         }
 
+        $this->call(RecordatorioPlantillaSeeder::class);
+
         // sin inventario: batidos hechos al momento
         $sinInventario = [
             ['Batidos', 'Batido de Proteína', 4.00, 2.00],

@@ -2,6 +2,8 @@
 
 use App\Console\Commands\MarcarSuscripcionesVencidasCommand;
 use App\Console\Commands\ObtenerTasaBcvCommand;
+use App\Console\Commands\RecordatoriosEnviarCommand;
+use App\Console\Commands\RecordatoriosProponerCommand;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schedule;
@@ -27,3 +29,18 @@ Schedule::command(MarcarSuscripcionesVencidasCommand::class)
     ->dailyAt('00:05')
     ->timezone('America/Caracas')
     ->withoutOverlapping();
+
+// recordatorios de WhatsApp: temprano deja en la cola los avisos del día
+// (membresías que vencen en unos días y las que vencen hoy). No envía nada
+// por sí solo: el envío lo hace el comando de abajo, y solo mientras el dueño
+// tenga el bot "iniciado" en el dashboard.
+Schedule::command(RecordatoriosProponerCommand::class)
+    ->dailyAt('07:30')
+    ->timezone('America/Caracas')
+    ->withoutOverlapping();
+
+// cada minuto se evalúa si toca mandar el siguiente mensaje; el horario, la
+// espera aleatoria y los descansos se leen de recordatorio_ajustes
+Schedule::command(RecordatoriosEnviarCommand::class)
+    ->everyMinute()
+    ->withoutOverlapping(10);
