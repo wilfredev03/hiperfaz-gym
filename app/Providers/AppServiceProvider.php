@@ -72,6 +72,9 @@ class AppServiceProvider extends ServiceProvider
     {
         if ($this->app->runningInConsole() && $this->app->environment('local')) {
             DevCommands::artisan('serve --host=0.0.0.0', 'server');
+            // sin el planificador en marcha no corre recordatorios:enviar ni los
+            // demás comandos programados; en producción lo hace el cron de schedule:run
+            DevCommands::artisan('schedule:work', 'schedule');
         }
     }
 }
