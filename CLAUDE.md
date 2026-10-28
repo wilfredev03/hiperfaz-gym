@@ -276,7 +276,12 @@ socios activos que vencen en los próximos 7 días y a los que vencieron en los
 
 Página `recordatorios.index` (grupo Gimnasio): interruptor Iniciar/Detener,
 estado y QR del bot (se consulta a `recordatorios.bot` cada 4 s), cola,
-historial con filtro, plantillas y ajustes de ritmo.
+historial con filtro, plantillas y ajustes de ritmo. `EstadoEnvios.vue` muestra
+la cuenta regresiva grande al próximo mensaje (o al fin del descanso), cuántos
+mensajes van del próximo descanso y el avance de la cola de hoy (`progreso`:
+avisos con `fecha_aviso` = hoy, enviados / total, con fallidos y cancelados
+aparte). El motor, el avance y la cola se recargan cada 4 s; la cuenta regresiva
+se dibuja en el navegador corregida con `motor.servidor_ahora`.
 
 - **Flujo:** `recordatorios:proponer` (07:30 Caracas, o el botón "Generar cola de
   hoy") crea filas `pendiente` en `recordatorios` para las suscripciones
@@ -284,7 +289,12 @@ historial con filtro, plantillas y ajustes de ritmo.
   (`vence_hoy`). Salta clientes inactivos, sin celular venezolano válido
   (`TelefonoVenezolano`), que ya renovaron (`VENCE_EL_SQL`) y planes de menos de
   `duracion_minima_dias` (7; el pase de día no se "recuerda").
-  `recordatorios:enviar` corre cada minuto y llama a `MotorEnvio::tick()`, que
+  `recordatorios:enviar` lo lanza el planificador cada minuto y cada ejecución
+  se queda ~55 s llamando a `MotorEnvio::tick()` cada 3 s (con una sola
+  evaluación por minuto la espera de 60–180 s se redondearía hacia arriba y la
+  cuenta regresiva del panel no coincidiría; `--una-vez` evalúa una sola vez).
+  En desarrollo `composer run dev` arranca `schedule:work` (AppServiceProvider);
+  en producción hace falta el cron de `schedule:run`. `tick()`
   manda **a lo sumo uno** por llamada y solo si: `recordatorio_ajustes.activo`,
   dentro de `hora_inicio`–`hora_fin` (08:00–18:00), sin descanso ni espera en
   curso y bot conectado. Espera aleatoria 60–180 s entre mensajes; descanso de
